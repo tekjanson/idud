@@ -355,6 +355,7 @@ impl TrainingOrchestrator {
             repo_url: url.to_string(),
             branch: "main".to_string(),
             work_dir: None,
+            skip_clone: false,
         };
 
         let traverser = RepositoryTraverser::new(config);

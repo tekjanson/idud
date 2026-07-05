@@ -465,6 +465,7 @@ async fn ingest_repo(
         repo_url: url.clone(),
         branch: branch.clone(),
         work_dir: None,
+        skip_clone: false,
     };
     
     match RepositoryTraverser::new(config).ingest().await {

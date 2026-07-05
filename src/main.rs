@@ -6,9 +6,11 @@ use clap::{Parser, Subcommand};
 use idud::{
     ContractLedger, RepositoryIngestionConfig, RepositoryTraverser, serve, WebServerConfig,
     discover_training_repos, TrainingOrchestrator, TrainingConfig, TrainingCache,
+    Signatory, Contract,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::io::Write;
 
 #[derive(Parser)]
 #[command(name = "idud")]
@@ -22,7 +24,7 @@ struct Cli {
 enum Commands {
     /// Ingest a GitHub repository and register signatories
     IngestRepo {
-        /// Repository URL
+        /// Repository URL or local path
         #[arg(short, long)]
         url: String,
 
@@ -33,6 +35,10 @@ enum Commands {
         /// Working directory for clone
         #[arg(short, long)]
         work_dir: Option<PathBuf>,
+
+        /// Skip clone, ingest from local directory
+        #[arg(short, long)]
+        local: bool,
     },
 
     /// Audit contract ledger consistency
@@ -69,6 +75,10 @@ enum Commands {
         /// Host (default: 127.0.0.1)
         #[arg(short, long, default_value = "127.0.0.1")]
         host: String,
+
+        /// Optional JSON file to load contracts from
+        #[arg(short, long)]
+        ledger_file: Option<PathBuf>,
     },
 
     /// Show training cache status
@@ -117,17 +127,23 @@ async fn main() -> anyhow::Result<()> {
             url,
             branch,
             work_dir,
+            local,
         } => {
             println!("📋 Ingesting repository: {}", url);
+            std::io::Write::flush(&mut std::io::stdout()).ok();
 
             let config = RepositoryIngestionConfig {
-                repo_url: url,
+                repo_url: url.clone(),
                 branch,
-                work_dir,
+                work_dir: if local { Some(PathBuf::from(&url)) } else { work_dir },
+                skip_clone: local,
             };
 
+            eprintln!("[DEBUG] Config created, starting ingest...");
             let traverser = RepositoryTraverser::new(config);
+            eprintln!("[DEBUG] Traverser created, calling ingest()...");
             let result = traverser.ingest().await?;
+            eprintln!("[DEBUG] Ingest completed");
 
             println!("✅ Ingestion complete!");
             println!("   Files processed: {}", result.files_processed);
@@ -135,6 +151,11 @@ async fn main() -> anyhow::Result<()> {
                 "   Signatories registered: {}",
                 result.signatories_registered.len()
             );
+            println!(
+                "   Contracts discovered: {}",
+                result.contracts_discovered.len()
+            );
+            std::io::Write::flush(&mut std::io::stdout()).ok();
 
             if !result.errors.is_empty() {
                 println!("⚠️  Errors encountered:");
@@ -156,6 +177,56 @@ async fn main() -> anyhow::Result<()> {
                     result.signatories_registered.len() - 10
                 );
             }
+
+            println!("\n🔗 Contracts discovered:");
+            for contract in result.contracts_discovered.iter().take(10) {
+                println!(
+                    "   - {:?}: {} → {} (confidence: {:.2})",
+                    contract.clause_type, contract.principal_id, contract.guarantor_id, contract.confidence
+                );
+            }
+            if result.contracts_discovered.len() > 10 {
+                println!(
+                    "   ... and {} more",
+                    result.contracts_discovered.len() - 10
+                );
+            }
+
+            // Save contracts to JSON file for later visualization
+            let repo_name = url.split('/').last().unwrap_or("repo");
+            let contracts_file = format!("data/{}-contracts.json", repo_name);
+            std::fs::create_dir_all("data").ok();
+
+            let ledger = Arc::new(ContractLedger::new());
+            for signatory in &result.signatories_registered {
+                let _ = ledger.register_signatory(signatory.clone());
+            }
+            
+            // Draft discovered contracts into the ledger
+            for contract in &result.contracts_discovered {
+                let _ = ledger.draft_contract(contract.clone());
+            }
+
+            let signatories = ledger.get_all_signatories();
+            let contracts = ledger.get_all_contracts();
+
+            let export_data = serde_json::json!({
+                "version": "1.0",
+                "exported_at": chrono::Utc::now().to_rfc3339(),
+                "stats": {
+                    "signatories": signatories.len(),
+                    "contracts": contracts.len()
+                },
+                "signatories": signatories,
+                "contracts": contracts
+            });
+
+            if let Ok(json_str) = serde_json::to_string_pretty(&export_data) {
+                if let Ok(_) = std::fs::write(&contracts_file, json_str) {
+                    println!("\n💾 Contracts saved to: {}", contracts_file);
+                    println!("   To visualize: cargo run --release -- serve --ledger-file {}", contracts_file);
+                }
+            }
         }
 
         Commands::Audit => {
@@ -176,8 +247,47 @@ async fn main() -> anyhow::Result<()> {
             println!("💾 Exported to: {}", output.display());
         }
 
-        Commands::Serve { port, host } => {
+        Commands::Serve { port, host, ledger_file } => {
             let ledger = Arc::new(ContractLedger::new());
+            
+            let mut sigs_loaded = 0;
+            let mut contracts_loaded = 0;
+            let mut contract_errors = 0;
+            
+            // Load contracts from file if provided
+            if let Some(file_path) = ledger_file {
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(signatories) = data["signatories"].as_array() {
+                            for sig_val in signatories {
+                                if let Ok(sig) = serde_json::from_value::<Signatory>(sig_val.clone()) {
+                                    let _ = ledger.register_signatory(sig);
+                                    sigs_loaded += 1;
+                                }
+                            }
+                        }
+                        if let Some(contracts) = data["contracts"].as_array() {
+                            for contract_val in contracts {
+                                if let Ok(contract) = serde_json::from_value::<Contract>(contract_val.clone()) {
+                                    match ledger.draft_contract(contract) {
+                                        Ok(_) => contracts_loaded += 1,
+                                        Err(e) => {
+                                            contract_errors += 1;
+                                            if contract_errors <= 3 {
+                                                eprintln!("Error drafting contract: {}", e);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        println!("✅ Loaded contracts from: {}", file_path.display());
+                        println!("   Signatories: {}", sigs_loaded);
+                        println!("   Contracts: {} (errors: {})", contracts_loaded, contract_errors);
+                    }
+                }
+            }
+            
             let config = WebServerConfig { port, host };
             serve(ledger, config).await?;
         }

@@ -15,6 +15,7 @@ pub struct RepositoryIngestionConfig {
     pub repo_url: String,
     pub branch: String,
     pub work_dir: Option<PathBuf>,
+    pub skip_clone: bool,
 }
 
 pub struct IngestionResult {
@@ -154,33 +155,67 @@ impl RepositoryTraverser {
 
     /// Main ingestion: traverse repo and register all signatories and discover contracts
     pub async fn ingest(&self) -> Result<IngestionResult> {
+        eprintln!("[INGEST] Starting ingestion of: {:?}", self.work_dir);
         let mut signatories = Vec::new();
         let mut errors = Vec::new();
 
-        // Clone repository
-        if let Err(e) = self.clone().await {
-            errors.push(format!("Clone failed: {}", e));
-            return Ok(IngestionResult {
-                repository: self.config.repo_url.clone(),
-                files_processed: 0,
-                signatories_registered: signatories,
-                contracts_discovered: Vec::new(),
-                errors,
-            });
+        // Clone repository (skip if local)
+        if !self.config.skip_clone {
+            eprintln!("[INGEST] Cloning repository...");
+            if let Err(e) = self.clone().await {
+                errors.push(format!("Clone failed: {}", e));
+                return Ok(IngestionResult {
+                    repository: self.config.repo_url.clone(),
+                    files_processed: 0,
+                    signatories_registered: signatories,
+                    contracts_discovered: Vec::new(),
+                    errors,
+                });
+            }
+        } else {
+            eprintln!("[INGEST] Skipping clone, using local directory");
         }
 
         let mut files_processed = 0;
+        eprintln!("[INGEST] Starting walk of directory...");
 
-        // Walk repository
-        for entry in WalkDir::new(&self.work_dir)
+        // Walk repository with early directory filtering
+        let walker = WalkDir::new(&self.work_dir)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| !e.path().to_string_lossy().contains("/.git/"))
-            .filter(|e| !e.path().to_string_lossy().contains("/node_modules/"))
-        {
+            .filter(|e| {
+                let path = e.path();
+                let path_str = path.to_string_lossy();
+                // Skip build/cache directories early
+                !path_str.contains("/.git")
+                    && !path_str.contains("/node_modules")
+                    && !path_str.contains("/target")
+                    && !path_str.contains("/dist")
+                    && !path_str.contains("/build")
+            });
+
+        for entry in walker {
             let path = entry.path();
 
             if path.is_file() {
+                // Skip binary and non-code files early
+                let path_str = path.to_string_lossy().to_lowercase();
+                if path_str.ends_with(".png")
+                    || path_str.ends_with(".jpg")
+                    || path_str.ends_with(".jpeg")
+                    || path_str.ends_with(".gif")
+                    || path_str.ends_with(".zip")
+                    || path_str.ends_with(".tar")
+                    || path_str.ends_with(".gz")
+                    || path_str.ends_with(".bin")
+                    || path_str.ends_with(".so")
+                    || path_str.ends_with(".dylib")
+                    || path_str.ends_with(".dll")
+                    || path_str.ends_with(".pdf")
+                {
+                    continue;
+                }
+
                 files_processed += 1;
 
                 if let Ok(relative) = path.strip_prefix(&self.work_dir) {
@@ -286,6 +321,8 @@ impl RepositoryTraverser {
             }
         }
 
+        eprintln!("[INGEST] Walk complete, files processed: {}, signatories: {}", files_processed, signatories.len());
+
         // Analyze dependencies using AI linking (optional post-processing step)
         let mut contracts_discovered = Vec::new();
         
@@ -295,22 +332,29 @@ impl RepositoryTraverser {
             .unwrap_or(true); // Default to true
 
         if enable_ai_linking && !signatories.is_empty() {
+            eprintln!("[INGEST] Starting AI linking pass...");
             tracing::info!("Starting AI linking pass on {} signatories", signatories.len());
             let mut linker = AILinker::new(AILinkerConfig::default());
             match linker.link_files(&signatories, &contracts_discovered) {
                 Ok(ai_contracts) => {
+                    eprintln!("[INGEST] AI linking found {} contracts", ai_contracts.len());
                     tracing::info!("AI linking inferred {} semantic dependencies", ai_contracts.len());
                     contracts_discovered.extend(ai_contracts);
                 }
                 Err(e) => {
+                    eprintln!("[INGEST] AI linking error: {}", e);
                     tracing::warn!("AI linking failed (continuing without AI contracts): {}", e);
                 }
             }
         }
 
-        // Cleanup
-        let _ = std::fs::remove_dir_all(&self.work_dir);
+        // Only clean up if we cloned (don't delete local repos!)
+        if !self.config.skip_clone {
+            eprintln!("[INGEST] Cleaning up cloned repository");
+            let _ = std::fs::remove_dir_all(&self.work_dir);
+        }
 
+        eprintln!("[INGEST] Returning results");
         Ok(IngestionResult {
             repository: self.config.repo_url.clone(),
             files_processed,

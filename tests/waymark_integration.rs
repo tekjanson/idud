@@ -25,6 +25,7 @@ async fn waymark_integration_ingest_and_analyze() {
         repo_url: "https://github.com/tekjanson/Waymark".to_string(),
         branch: "main".to_string(),
         work_dir: Some(work_dir),
+        skip_clone: false,
     };
 
     // Run ingestion
@@ -173,6 +174,7 @@ async fn waymark_integration_dependency_patterns() {
         repo_url: "https://github.com/tekjanson/Waymark".to_string(),
         branch: "main".to_string(),
         work_dir: Some(work_dir),
+        skip_clone: false,
     };
 
     let traverser = RepositoryTraverser::new(config);
@@ -259,6 +261,7 @@ async fn waymark_integration_metadata_validation() {
         repo_url: "https://github.com/tekjanson/Waymark".to_string(),
         branch: "main".to_string(),
         work_dir: Some(work_dir),
+        skip_clone: false,
     };
 
     let traverser = RepositoryTraverser::new(config);
