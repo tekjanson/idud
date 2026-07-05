@@ -4,10 +4,10 @@
 //! Signatories are indexed by UUID→NodeIndex for lightning-fast graph traversal
 
 use crate::types::*;
+use parking_lot::RwLock;
 use petgraph::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 /// Pure topological index: O(1) signatory UUID lookup, O(1) neighbor traversal
 pub struct ContractLedger {
@@ -35,18 +35,20 @@ impl ContractLedger {
     pub fn register_signatory(&self, signatory: Signatory) -> Result<String, String> {
         crate::schemas::ContractValidator::audit_signatory(&signatory)?;
         let signatory_id = signatory.id.clone();
-        
+
         // Add node to graph (always succeeds, returns NodeIndex)
         let node_idx = {
             let mut graph = self.graph.write();
             graph.add_node(())
         };
-        
+
         // Map UUID → NodeIndex
-        self.uuid_to_node.write().insert(signatory_id.clone(), node_idx);
+        self.uuid_to_node
+            .write()
+            .insert(signatory_id.clone(), node_idx);
         // Store signatory data
         self.node_data.write().insert(node_idx, signatory);
-        
+
         Ok(signatory_id)
     }
 
@@ -54,28 +56,32 @@ impl ContractLedger {
     pub fn draft_contract(&self, contract: Contract) -> Result<String, String> {
         crate::schemas::ContractValidator::audit_contract(&contract)?;
         let contract_id = contract.id.clone();
-        
+
         // Lookup both signatories' NodeIndex
         let principal_node = {
             let uuid_map = self.uuid_to_node.read();
-            *uuid_map.get(&contract.principal_id)
+            *uuid_map
+                .get(&contract.principal_id)
                 .ok_or_else(|| format!("Signatory {} not found", contract.principal_id))?
         };
         let guarantor_node = {
             let uuid_map = self.uuid_to_node.read();
-            *uuid_map.get(&contract.guarantor_id)
+            *uuid_map
+                .get(&contract.guarantor_id)
                 .ok_or_else(|| format!("Signatory {} not found", contract.guarantor_id))?
         };
-        
+
         // Add edge to graph
         {
             let mut graph = self.graph.write();
             graph.add_edge(principal_node, guarantor_node, ());
         }
-        
+
         // Store contract metadata keyed by (principal_node, guarantor_node)
-        self.edge_metadata.write().insert((principal_node, guarantor_node), contract);
-        
+        self.edge_metadata
+            .write()
+            .insert((principal_node, guarantor_node), contract);
+
         Ok(contract_id)
     }
 
@@ -95,15 +101,14 @@ impl ContractLedger {
             None => return vec![],
         };
         drop(uuid_map);
-        
+
         let graph = self.graph.read();
         let neighbors: Vec<NodeIndex> = graph.neighbors(principal_node).collect();
         let edge_meta = self.edge_metadata.read();
-        
-        neighbors.iter()
-            .filter_map(|&neighbor_node| {
-                edge_meta.get(&(principal_node, neighbor_node)).cloned()
-            })
+
+        neighbors
+            .iter()
+            .filter_map(|&neighbor_node| edge_meta.get(&(principal_node, neighbor_node)).cloned())
             .collect()
     }
 
@@ -115,15 +120,15 @@ impl ContractLedger {
             None => return vec![],
         };
         drop(uuid_map);
-        
+
         let graph = self.graph.read();
-        let predecessors: Vec<NodeIndex> = graph.neighbors_directed(guarantor_node, Incoming).collect();
+        let predecessors: Vec<NodeIndex> =
+            graph.neighbors_directed(guarantor_node, Incoming).collect();
         let edge_meta = self.edge_metadata.read();
-        
-        predecessors.iter()
-            .filter_map(|&pred_node| {
-                edge_meta.get(&(pred_node, guarantor_node)).cloned()
-            })
+
+        predecessors
+            .iter()
+            .filter_map(|&pred_node| edge_meta.get(&(pred_node, guarantor_node)).cloned())
             .collect()
     }
 
@@ -134,32 +139,32 @@ impl ContractLedger {
         max_depth: usize,
     ) -> Option<ChainOfObligation> {
         let start_signatory = self.get_signatory(start_signatory_id)?;
-        
+
         let uuid_map = self.uuid_to_node.read();
         let start_node = *uuid_map.get(start_signatory_id)?;
         drop(uuid_map);
-        
+
         let graph = self.graph.read();
         let node_data = self.node_data.read();
         let edge_meta = self.edge_metadata.read();
-        
+
         let mut chain = vec![(start_signatory.clone(), None)];
         let mut visited = std::collections::HashSet::new();
         visited.insert(start_node);
-        
+
         let mut queue = std::collections::VecDeque::new();
         queue.push_back((start_node, 0usize));
-        
+
         while let Some((current_node, depth)) = queue.pop_front() {
             if depth >= max_depth {
                 continue;
             }
-            
+
             // O(1) neighbor iteration: petgraph's neighbor_indices is linear in out-degree only
             for neighbor in graph.neighbors(current_node) {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
-                    
+
                     if let Some(signatory) = node_data.get(&neighbor) {
                         if let Some(contract) = edge_meta.get(&(current_node, neighbor)) {
                             chain.push((signatory.clone(), Some(contract.clone())));
@@ -169,7 +174,7 @@ impl ContractLedger {
                 }
             }
         }
-        
+
         Some(ChainOfObligation {
             root_signatory: start_signatory,
             chain,
@@ -304,7 +309,7 @@ mod tests {
     #[test]
     fn test_draft_contract() {
         let ledger = ContractLedger::new();
-        
+
         let s1 = Signatory::new(
             SignatoryType::Function,
             "uri1".to_string(),
@@ -312,7 +317,7 @@ mod tests {
             "".to_string(),
         );
         let s1_id = s1.id.clone();
-        
+
         let s2 = Signatory::new(
             SignatoryType::Function,
             "uri2".to_string(),
@@ -320,10 +325,10 @@ mod tests {
             "".to_string(),
         );
         let s2_id = s2.id.clone();
-        
+
         ledger.register_signatory(s1).unwrap();
         ledger.register_signatory(s2).unwrap();
-        
+
         let contract = Contract::new(
             s1_id,
             s2_id,
@@ -396,11 +401,16 @@ mod tests {
         ledger.register_signatory(code).unwrap();
         ledger.register_signatory(test).unwrap();
 
-        let contract = Contract::new(code_id, test_id, ClauseType::Audits, 1.0, ContractSource::Deterministic);
+        let contract = Contract::new(
+            code_id,
+            test_id,
+            ClauseType::Audits,
+            1.0,
+            ContractSource::Deterministic,
+        );
         ledger.draft_contract(contract).unwrap();
 
         let report = ledger.audit_contract_coverage();
         assert_eq!(report.unaudited.len(), 0);
     }
 }
-

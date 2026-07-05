@@ -14,7 +14,8 @@
     "ingest:docs": "cargo run --release -- ingest-docs",
     "validate": "cargo run --release -- validate",
     "query": "cargo run --release -- query",
-    "ui": "cd ui && npm run dev"
+    "ui": "cargo run --release -- serve",
+    "ui:dev": "cargo run -- serve --port 3000"
   },
   "keywords": [
     "database",

@@ -8,11 +8,7 @@ use serde_json::json;
 pub struct SignatoryFactory;
 
 impl SignatoryFactory {
-    pub fn register_file(
-        repo_uri: &str,
-        file_path: &str,
-        branch: &str,
-    ) -> Signatory {
+    pub fn register_file(repo_uri: &str, file_path: &str, branch: &str) -> Signatory {
         let source_uri = format!("{}/blob/{}/{}", repo_uri, branch, file_path);
         Signatory::new(
             SignatoryType::File,
@@ -82,10 +78,7 @@ impl SignatoryFactory {
         line_start: usize,
         branch: &str,
     ) -> Signatory {
-        let source_uri = format!(
-            "{}/blob/{}/{}#L{}",
-            repo_uri, branch, file_path, line_start
-        );
+        let source_uri = format!("{}/blob/{}/{}#L{}", repo_uri, branch, file_path, line_start);
         Signatory::new(
             SignatoryType::ApiEndpoint,
             source_uri,

@@ -22,7 +22,9 @@ cargo build --release
 ```
 
 ### Usage
-Run idud strictly as a local CLI tool to ingest repositories and export the mapped ledger:
+
+#### CLI Commands
+Run idud as a local CLI tool to ingest repositories and export the mapped ledger:
 
 ```bash
 # Ingest a repository and build the in-memory graph
@@ -34,3 +36,19 @@ cargo run --release -- trace --start "signatory-uuid" --depth 3
 # Export the mapped topology
 cargo run --release -- brief --entity "core-auth" --output idud_brief.json
 ```
+
+#### Visual Graph Rendering
+View the contract dependency graph in an interactive web visualization:
+
+```bash
+# Start the visualization server (runs on http://127.0.0.1:3000)
+cargo run --release -- serve --port 3000 --host 127.0.0.1
+```
+
+Then open http://127.0.0.1:3000 in your browser. The visualization features:
+- **Interactive D3.js graph** showing signatories (nodes) and contracts (edges)
+- **Real-time statistics** displaying signatory and contract counts
+- **Searchable signatory list** in the left sidebar
+- **Node color coding** by type (Function, File, Class, Test, etc.)
+- **Zoom and pan** controls for exploring large graphs
+- **Drag-to-reposition** nodes for custom layout

@@ -5,8 +5,8 @@
 
 use idud::contract_ledger::ContractLedger;
 use idud::pipelines::deep_link::{
-    BatchDiscoveryEngine, ContractDiscoveryEngine, InferenceClient, LLMDiscoveryRequest, OllamaRequest,
-    OllamaResponse,
+    BatchDiscoveryEngine, ContractDiscoveryEngine, InferenceClient, LLMDiscoveryRequest,
+    OllamaRequest, OllamaResponse,
 };
 use idud::types::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -49,7 +49,7 @@ impl InferenceClient for UATMockClient {
     async fn infer(&self, request: OllamaRequest) -> anyhow::Result<OllamaResponse> {
         // Track concurrent calls
         let concurrent = self.concurrent_calls.fetch_add(1, Ordering::SeqCst) + 1;
-        
+
         // Update max concurrent if needed
         let mut max = self.max_concurrent.load(Ordering::SeqCst);
         while concurrent > max {
@@ -103,7 +103,10 @@ async fn uat_graph_register_signatory_creates_node() {
     assert!(result.is_ok(), "Signatory registration should succeed");
 
     let retrieved = ledger.get_signatory(&sig_id);
-    assert!(retrieved.is_some(), "Signatory should be retrievable after registration");
+    assert!(
+        retrieved.is_some(),
+        "Signatory should be retrievable after registration"
+    );
     assert_eq!(retrieved.unwrap().label, "validatePassword");
 }
 
@@ -154,10 +157,30 @@ async fn uat_graph_trace_chain_respects_max_depth() {
 
     // Create chain: A -> B -> C -> D
     let sigs = vec![
-        Signatory::new(SignatoryType::Function, "uri".to_string(), "funcA".to_string(), "".to_string()),
-        Signatory::new(SignatoryType::Function, "uri".to_string(), "funcB".to_string(), "".to_string()),
-        Signatory::new(SignatoryType::Function, "uri".to_string(), "funcC".to_string(), "".to_string()),
-        Signatory::new(SignatoryType::Function, "uri".to_string(), "funcD".to_string(), "".to_string()),
+        Signatory::new(
+            SignatoryType::Function,
+            "uri".to_string(),
+            "funcA".to_string(),
+            "".to_string(),
+        ),
+        Signatory::new(
+            SignatoryType::Function,
+            "uri".to_string(),
+            "funcB".to_string(),
+            "".to_string(),
+        ),
+        Signatory::new(
+            SignatoryType::Function,
+            "uri".to_string(),
+            "funcC".to_string(),
+            "".to_string(),
+        ),
+        Signatory::new(
+            SignatoryType::Function,
+            "uri".to_string(),
+            "funcD".to_string(),
+            "".to_string(),
+        ),
     ];
 
     let ids: Vec<_> = sigs.iter().map(|s| s.id.clone()).collect();
@@ -320,7 +343,10 @@ async fn uat_dispatcher_batches_all_signatories() {
     // With 6 signatories and batch_size=2, should make 3 rounds
     // Each signatory processes independently, so 6 total requests
     let request_count = mock_client.request_count();
-    assert_eq!(request_count, 6, "Should make 6 inference requests for 6 signatories");
+    assert_eq!(
+        request_count, 6,
+        "Should make 6 inference requests for 6 signatories"
+    );
 }
 
 #[tokio::test]
@@ -352,7 +378,11 @@ async fn uat_dispatcher_never_makes_http_requests() {
 
     // Verify only mock client was called, not actual HTTP
     // This is implicit: if actual HTTP was attempted, it would fail (no real Ollama)
-    assert_eq!(mock_client.request_count(), 1, "Mock should have been called once");
+    assert_eq!(
+        mock_client.request_count(),
+        1,
+        "Mock should have been called once"
+    );
 }
 
 #[tokio::test]
@@ -376,7 +406,7 @@ async fn uat_dispatcher_parses_json_response_safely() {
     };
 
     let result = engine.discover_contracts(request).await;
-    
+
     // Should not panic on empty response
     assert!(result.is_ok(), "Should handle mock response gracefully");
     let response = result.unwrap();
@@ -460,8 +490,18 @@ fn uat_translator_renders_audit_relationship() {
 fn uat_translator_chain_rendering() {
     use idud::ui::translator::ContractRenderer;
 
-    let s1 = Signatory::new(SignatoryType::Function, "uri1".to_string(), "func1".to_string(), "".to_string());
-    let s2 = Signatory::new(SignatoryType::Function, "uri2".to_string(), "func2".to_string(), "".to_string());
+    let s1 = Signatory::new(
+        SignatoryType::Function,
+        "uri1".to_string(),
+        "func1".to_string(),
+        "".to_string(),
+    );
+    let s2 = Signatory::new(
+        SignatoryType::Function,
+        "uri2".to_string(),
+        "func2".to_string(),
+        "".to_string(),
+    );
 
     let contract = Contract::new(
         s1.id.clone(),
@@ -548,11 +588,17 @@ async fn uat_end_to_end_workflow() {
 
     // 4. Trace obligations
     let chain = ledger.trace_chain_of_obligation(&auth_id, 2).unwrap();
-    assert_eq!(chain.total_signatories, 2, "authenticate should lead to validatePassword");
+    assert_eq!(
+        chain.total_signatories, 2,
+        "authenticate should lead to validatePassword"
+    );
 
     // 5. Audit coverage
     let report = ledger.audit_contract_coverage();
-    assert_eq!(report.audited_signatories, 2, "Both functions involved in audit contract");
+    assert_eq!(
+        report.audited_signatories, 2,
+        "Both functions involved in audit contract"
+    );
 
     // 6. Generate AI brief
     let brief = ledger.generate_contract_brief("test_entity");

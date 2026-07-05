@@ -86,7 +86,10 @@ impl EmbeddingGenerator {
 
     /// Generate embedding for a single signatory
     pub fn embed_signatory(&self, signatory: &Signatory) -> Embedding {
-        let text = format!("{} {} {}", signatory.label, signatory.snippet, signatory.source_uri);
+        let text = format!(
+            "{} {} {}",
+            signatory.label, signatory.snippet, signatory.source_uri
+        );
         let vector = mock_embedding(&text, 42);
 
         Embedding {

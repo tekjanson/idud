@@ -242,7 +242,10 @@ impl RepositoryTraverser {
                                     }
                                 }
                                 Err(e) => {
-                                    errors.push(format!("Test extraction error in {}: {}", rel_str, e));
+                                    errors.push(format!(
+                                        "Test extraction error in {}: {}",
+                                        rel_str, e
+                                    ));
                                 }
                             }
                         }
@@ -269,7 +272,10 @@ impl RepositoryTraverser {
                                 }
                             }
                             Err(e) => {
-                                errors.push(format!("Markdown extraction error in {}: {}", rel_str, e));
+                                errors.push(format!(
+                                    "Markdown extraction error in {}: {}",
+                                    rel_str, e
+                                ));
                             }
                         }
                     }

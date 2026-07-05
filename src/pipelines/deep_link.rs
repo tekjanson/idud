@@ -77,17 +77,13 @@ impl OllamaDispatcher {
 impl InferenceClient for OllamaDispatcher {
     async fn infer(&self, request: OllamaRequest) -> Result<OllamaResponse> {
         let url = format!("{}/api/generate", self.base_url);
-        
+
         let req = OllamaRequest {
             model: self.model.clone(),
             ..request
         };
 
-        let response = self.client
-            .post(&url)
-            .json(&req)
-            .send()
-            .await?;
+        let response = self.client.post(&url).json(&req).send().await?;
 
         let resp: OllamaResponse = response.json().await?;
         Ok(resp)
@@ -141,8 +137,15 @@ fn discovery_prompt(principal: &Signatory, context: &[Signatory]) -> String {
     for (i, signatory) in context.iter().enumerate() {
         prompt.push_str(&format!(
             "\n[{}] Type: {:?}, Name: {}\nCode:\n{}\n",
-            signatory.id, signatory.signatory_type, signatory.label, 
-            signatory.snippet.lines().take(3).collect::<Vec<_>>().join("\n")
+            signatory.id,
+            signatory.signatory_type,
+            signatory.label,
+            signatory
+                .snippet
+                .lines()
+                .take(3)
+                .collect::<Vec<_>>()
+                .join("\n")
         ));
         if i >= 10 {
             prompt.push_str("\n(... and more signatories in context)");
@@ -150,7 +153,9 @@ fn discovery_prompt(principal: &Signatory, context: &[Signatory]) -> String {
         }
     }
 
-    prompt.push_str("\n\nIdentify contract clauses from PRINCIPAL to CONTEXT signatories. Return JSON only.");
+    prompt.push_str(
+        "\n\nIdentify contract clauses from PRINCIPAL to CONTEXT signatories. Return JSON only.",
+    );
     prompt
 }
 
@@ -162,7 +167,10 @@ pub struct ContractDiscoveryEngine {
 
 impl ContractDiscoveryEngine {
     pub fn new(client: Arc<dyn InferenceClient>, enable_mock: bool) -> Self {
-        Self { client, enable_mock }
+        Self {
+            client,
+            enable_mock,
+        }
     }
 
     pub fn with_mock() -> Self {
@@ -190,7 +198,7 @@ impl ContractDiscoveryEngine {
         };
 
         let response = self.client.infer(ollama_req).await?;
-        
+
         // Parse JSON from response
         let contracts: Vec<InferredContract> = serde_json::from_str(&response.response)
             .ok()
@@ -246,7 +254,10 @@ impl ContractDiscoveryEngine {
                             guarantor_id: context.id.clone(),
                             clause_type: ClauseType::Audits,
                             confidence: 0.95,
-                            clause_reasoning: format!("Test '{}' audits '{}'", request.signatory.label, context.label),
+                            clause_reasoning: format!(
+                                "Test '{}' audits '{}'",
+                                request.signatory.label, context.label
+                            ),
                         });
                     }
                 }
@@ -343,14 +354,12 @@ mod tests {
             "fn fetchData(){}".to_string(),
         );
 
-        let context = vec![
-            Signatory::new(
-                SignatoryType::Function,
-                "uri".to_string(),
-                "parseData".to_string(),
-                "fn parseData(){}".to_string(),
-            ),
-        ];
+        let context = vec![Signatory::new(
+            SignatoryType::Function,
+            "uri".to_string(),
+            "parseData".to_string(),
+            "fn parseData(){}".to_string(),
+        )];
 
         let request = LLMDiscoveryRequest {
             signatory: principal,

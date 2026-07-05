@@ -193,4 +193,3 @@ pub struct LedgerIndex {
     pub by_label: HashMap<String, String>,
     pub most_obligated: Vec<(String, usize)>,
 }
-
