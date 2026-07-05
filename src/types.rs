@@ -1,13 +1,13 @@
 // src/types.rs
-//! Universal graph types for the Link Tree architecture.
-//! Pure index model: stores pointers, not knowledge.
+//! Contract Ledger types: an immutable ledger of software contracts and bindings.
+//! Pure topological index: stores contractual pointers, not logic or knowledge.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum NodeType {
+pub enum SignatoryType {
     File,
     Function,
     Class,
@@ -20,48 +20,58 @@ pub enum NodeType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum EdgeType {
+pub enum ClauseType {
+    /// This signatory implements the contract
     Implements,
-    Tests,
-    DependsOn,
-    IsTestedBy,
+    /// This signatory is audited by another
+    Audits,
+    /// This signatory requires another to function
+    Requires,
+    /// This signatory is required by another
+    RequiredBy,
+    /// This signatory calls another
     Calls,
+    /// This signatory is called by another
     CalledBy,
+    /// This signatory documents another
     Documents,
+    /// This signatory uses another
     Uses,
+    /// This signatory enslaves another (high coupling)
     Enslaves,
+    /// This signatory is enslaved by another
     EnslavedBy,
 }
 
-/// Universal Node: the fundamental unit in the Link Tree.
-/// Every entity (code, documentation, test) is a Node.
+/// Signatory: a contractual entity in the ledger
+/// Every component (file, function, test) that enters into contractual obligations
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
+pub struct Signatory {
     pub id: String,
-    pub node_type: NodeType,
-    /// Pirate Bay link back to the exact GitHub repo/branch/line
+    pub signatory_type: SignatoryType,
+    /// Pirate Bay link: precise location in repo/branch/line
     pub source_uri: String,
     pub label: String,
-    /// Raw text snippet for LLM analysis
+    /// Raw snippet for contract discovery
     pub snippet: String,
-    pub extracted: chrono::DateTime<chrono::Utc>,
+    pub registered_at: chrono::DateTime<chrono::Utc>,
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-impl Node {
+impl Signatory {
     pub fn new(
-        node_type: NodeType,
+        signatory_type: SignatoryType,
         source_uri: String,
         label: String,
         snippet: String,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
-            node_type,
+            signatory_type,
             source_uri,
             label,
             snippet,
-            extracted: chrono::Utc::now(),
+            registered_at: chrono::Utc::now(),
             metadata: HashMap::new(),
         }
     }
@@ -72,110 +82,115 @@ impl Node {
     }
 }
 
-/// Universal Edge: a link between two Nodes.
-/// Represents discovered relationships.
+/// Contract: a binding between two Signatories
+/// Represents contractual obligations discovered during analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Edge {
+pub struct Contract {
     pub id: String,
-    pub source_node_id: String,
-    pub target_node_id: String,
-    pub edge_type: EdgeType,
-    /// 0-1: how sure the AI/parser is about this link
-    pub confidence_score: f32,
-    pub source: EdgeSource,
+    /// Principal: the signatory with obligations
+    pub principal_id: String,
+    /// Guarantor: the signatory that the principal binds to
+    pub guarantor_id: String,
+    pub clause_type: ClauseType,
+    /// Confidence score: AI certainty about this binding (0-1)
+    pub confidence: f32,
+    pub discovered_by: ContractSource,
     pub discovered_at: chrono::DateTime<chrono::Utc>,
-    pub reasoning: Option<String>,
-    pub proofs: Vec<String>,
+    pub clause_reasoning: Option<String>,
+    pub evidential_proofs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EdgeSource {
+pub enum ContractSource {
+    /// Binding discovered through deterministic parsing
     Deterministic,
+    /// Binding inferred through AI analysis
     AiInferred,
 }
 
-impl Edge {
+impl Contract {
     pub fn new(
-        source_node_id: String,
-        target_node_id: String,
-        edge_type: EdgeType,
-        confidence_score: f32,
-        source: EdgeSource,
+        principal_id: String,
+        guarantor_id: String,
+        clause_type: ClauseType,
+        confidence: f32,
+        discovered_by: ContractSource,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
-            source_node_id,
-            target_node_id,
-            edge_type,
-            confidence_score: confidence_score.max(0.0).min(1.0),
-            source,
+            principal_id,
+            guarantor_id,
+            clause_type,
+            confidence: confidence.max(0.0).min(1.0),
+            discovered_by,
             discovered_at: chrono::Utc::now(),
-            reasoning: None,
-            proofs: vec![],
+            clause_reasoning: None,
+            evidential_proofs: vec![],
         }
     }
 
     pub fn with_reasoning(mut self, reasoning: String) -> Self {
-        self.reasoning = Some(reasoning);
+        self.clause_reasoning = Some(reasoning);
         self
     }
 
     pub fn with_proof(mut self, proof: String) -> Self {
-        self.proofs.push(proof);
+        self.evidential_proofs.push(proof);
         self
     }
 }
 
-/// Graph Query Result: a traversal through the tree.
+/// Chain of Obligation: a path through contractual bindings
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TraversalResult {
-    pub start_node: Node,
-    pub path: Vec<(Node, Option<Edge>)>,
+pub struct ChainOfObligation {
+    pub root_signatory: Signatory,
+    pub chain: Vec<(Signatory, Option<Contract>)>,
     pub max_depth: usize,
-    pub total_nodes: usize,
+    pub total_signatories: usize,
 }
 
-/// Coverage Report: identifies gaps in the Link Tree.
+/// Contract Audit Report: identifies gaps and violations
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CoverageReport {
-    pub tested_nodes: usize,
-    pub untested: Vec<Node>,
-    pub coverage_percent: f32,
-    pub gaps: Vec<(Node, String)>,
+pub struct ContractAuditReport {
+    pub audited_signatories: usize,
+    pub unaudited: Vec<Signatory>,
+    pub audit_coverage_percent: f32,
+    pub violations: Vec<(Signatory, String)>,
 }
 
-/// AI Cheat Sheet: compressed, queryable snapshot of the Link Tree.
-/// Loaded into AI context to avoid token waste during traversal.
+/// AI Contract Brief: compressed, queryable ledger snapshot
+/// Loaded into AI context to avoid token waste during traversal
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AICheatSheet {
+pub struct AIContractBrief {
     pub entity: String,
     pub generated_at: chrono::DateTime<chrono::Utc>,
-    pub node_count: usize,
-    pub edge_count: usize,
-    pub concepts: Vec<ConceptEntry>,
-    pub workflows: Vec<WorkflowEntry>,
-    pub index: GraphIndex,
+    pub signatory_count: usize,
+    pub contract_count: usize,
+    pub conceptual_contracts: Vec<ContractualConcept>,
+    pub workflow_bindings: Vec<WorkflowBinding>,
+    pub ledger_index: LedgerIndex,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConceptEntry {
+pub struct ContractualConcept {
     pub id: String,
     pub name: String,
-    pub depends_on: Vec<String>,
-    pub tested_by: Vec<String>,
-    pub documents: Vec<String>,
+    pub principal_obligations: Vec<String>,
+    pub guarantor_obligations: Vec<String>,
+    pub audited_by: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowEntry {
+pub struct WorkflowBinding {
     pub name: String,
-    pub concepts: Vec<String>,
-    pub critical_path: Vec<String>,
+    pub signatories: Vec<String>,
+    pub critical_chain: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GraphIndex {
+pub struct LedgerIndex {
     pub by_type: HashMap<String, Vec<String>>,
     pub by_label: HashMap<String, String>,
-    pub top_dependencies: Vec<(String, usize)>,
+    pub most_obligated: Vec<(String, usize)>,
 }
+

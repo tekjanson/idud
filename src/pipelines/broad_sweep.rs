@@ -1,9 +1,9 @@
 // src/pipelines/broad_sweep.rs
 //! PHASE 3.1: The Broad Sweep
-//! Deterministic Node extraction from repository files
-//! Clones repo, traverses filesystem, chunks code into Nodes.
+//! Deterministic Signatory registration from repository files
+//! Clones repo, traverses filesystem, chunks code into Signatories.
 
-use crate::schemas::{EdgeFactory, NodeFactory, SchemaValidator};
+use crate::schemas::{ContractValidator, SignatoryFactory};
 use crate::types::*;
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -19,7 +19,7 @@ pub struct RepositoryIngestionConfig {
 pub struct IngestionResult {
     pub repository: String,
     pub files_processed: usize,
-    pub nodes_created: Vec<Node>,
+    pub signatories_registered: Vec<Signatory>,
     pub errors: Vec<String>,
 }
 
@@ -150,9 +150,9 @@ impl RepositoryTraverser {
         Ok(sections)
     }
 
-    /// Main ingestion: traverse repo and extract all nodes
+    /// Main ingestion: traverse repo and register all signatories
     pub async fn ingest(&self) -> Result<IngestionResult> {
-        let mut nodes = Vec::new();
+        let mut signatories = Vec::new();
         let mut errors = Vec::new();
 
         // Clone repository
@@ -161,7 +161,7 @@ impl RepositoryTraverser {
             return Ok(IngestionResult {
                 repository: self.config.repo_url.clone(),
                 files_processed: 0,
-                nodes_created: nodes,
+                signatories_registered: signatories,
                 errors,
             });
         }
@@ -183,14 +183,14 @@ impl RepositoryTraverser {
                 if let Ok(relative) = path.strip_prefix(&self.work_dir) {
                     let rel_str = relative.to_string_lossy().to_string();
 
-                    // Create FILE node
-                    let file_node = NodeFactory::create_file_node(
+                    // Register FILE signatory
+                    let file_signatory = SignatoryFactory::register_file(
                         &self.config.repo_url,
                         &rel_str,
                         &self.config.branch,
                     );
-                    if SchemaValidator::validate_node(&file_node).is_ok() {
-                        nodes.push(file_node);
+                    if ContractValidator::audit_signatory(&file_signatory).is_ok() {
+                        signatories.push(file_signatory);
                     }
 
                     // Extract code elements for TS/JS
@@ -202,7 +202,7 @@ impl RepositoryTraverser {
                             Ok(elements) => {
                                 for elem in elements {
                                     if elem.element_type == "FUNCTION" {
-                                        let node = NodeFactory::create_function_node(
+                                        let signatory = SignatoryFactory::register_function(
                                             &self.config.repo_url,
                                             &rel_str,
                                             &elem.name,
@@ -211,8 +211,8 @@ impl RepositoryTraverser {
                                             elem.end,
                                             &self.config.branch,
                                         );
-                                        if SchemaValidator::validate_node(&node).is_ok() {
-                                            nodes.push(node);
+                                        if ContractValidator::audit_signatory(&signatory).is_ok() {
+                                            signatories.push(signatory);
                                         }
                                     }
                                 }
@@ -227,7 +227,7 @@ impl RepositoryTraverser {
                             match self.extract_tests(path) {
                                 Ok(tests) => {
                                     for test in tests {
-                                        let node = NodeFactory::create_test_node(
+                                        let signatory = SignatoryFactory::register_test(
                                             &self.config.repo_url,
                                             &rel_str,
                                             &test.name,
@@ -236,8 +236,8 @@ impl RepositoryTraverser {
                                             test.end,
                                             &self.config.branch,
                                         );
-                                        if SchemaValidator::validate_node(&node).is_ok() {
-                                            nodes.push(node);
+                                        if ContractValidator::audit_signatory(&signatory).is_ok() {
+                                            signatories.push(signatory);
                                         }
                                     }
                                 }
@@ -257,14 +257,14 @@ impl RepositoryTraverser {
                                         "{}/blob/{}/{}",
                                         &self.config.repo_url, &self.config.branch, &rel_str
                                     );
-                                    let node = NodeFactory::create_doc_node(
+                                    let signatory = SignatoryFactory::register_documentation(
                                         &doc_uri,
                                         &section.heading.to_lowercase().replace(" ", "-"),
                                         &section.heading,
                                         section.snippet,
                                     );
-                                    if SchemaValidator::validate_node(&node).is_ok() {
-                                        nodes.push(node);
+                                    if ContractValidator::audit_signatory(&signatory).is_ok() {
+                                        signatories.push(signatory);
                                     }
                                 }
                             }
@@ -283,7 +283,7 @@ impl RepositoryTraverser {
         Ok(IngestionResult {
             repository: self.config.repo_url.clone(),
             files_processed,
-            nodes_created: nodes,
+            signatories_registered: signatories,
             errors,
         })
     }

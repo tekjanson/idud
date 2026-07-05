@@ -1,22 +1,21 @@
 // src/schemas.rs
-//! Link Tree schema factories and validators
+//! Contract Ledger schema factories and validators
 
 use crate::types::*;
 use serde_json::json;
 
-/// Node Factory: creates universally typed nodes from any source.
-pub struct NodeFactory;
+/// Signatory Factory: registers entities into the contract ledger
+pub struct SignatoryFactory;
 
-impl NodeFactory {
-    /// Create a FILE node from filesystem path
-    pub fn create_file_node(
+impl SignatoryFactory {
+    pub fn register_file(
         repo_uri: &str,
         file_path: &str,
         branch: &str,
-    ) -> Node {
+    ) -> Signatory {
         let source_uri = format!("{}/blob/{}/{}", repo_uri, branch, file_path);
-        Node::new(
-            NodeType::File,
+        Signatory::new(
+            SignatoryType::File,
             source_uri,
             file_path.to_string(),
             format!("File: {}", file_path),
@@ -26,8 +25,7 @@ impl NodeFactory {
         .with_metadata("branch".to_string(), json!(branch))
     }
 
-    /// Create a FUNCTION node from code analysis
-    pub fn create_function_node(
+    pub fn register_function(
         repo_uri: &str,
         file_path: &str,
         function_name: &str,
@@ -35,13 +33,13 @@ impl NodeFactory {
         line_start: usize,
         line_end: usize,
         branch: &str,
-    ) -> Node {
+    ) -> Signatory {
         let source_uri = format!(
             "{}/blob/{}/{}#L{}-L{}",
             repo_uri, branch, file_path, line_start, line_end
         );
-        Node::new(
-            NodeType::Function,
+        Signatory::new(
+            SignatoryType::Function,
             source_uri,
             function_name.to_string(),
             snippet,
@@ -52,8 +50,7 @@ impl NodeFactory {
         .with_metadata("lineEnd".to_string(), json!(line_end))
     }
 
-    /// Create a TEST node from test file
-    pub fn create_test_node(
+    pub fn register_test(
         repo_uri: &str,
         test_file_path: &str,
         test_name: &str,
@@ -61,13 +58,13 @@ impl NodeFactory {
         line_start: usize,
         line_end: usize,
         branch: &str,
-    ) -> Node {
+    ) -> Signatory {
         let source_uri = format!(
             "{}/blob/{}/{}#L{}-L{}",
             repo_uri, branch, test_file_path, line_start, line_end
         );
-        Node::new(
-            NodeType::Test,
+        Signatory::new(
+            SignatoryType::Test,
             source_uri,
             format!("{} ({})", test_name, test_file_path),
             snippet,
@@ -76,8 +73,7 @@ impl NodeFactory {
         .with_metadata("testName".to_string(), json!(test_name))
     }
 
-    /// Create an API_ENDPOINT node from route definition
-    pub fn create_api_endpoint_node(
+    pub fn register_api_endpoint(
         repo_uri: &str,
         file_path: &str,
         method: &str,
@@ -85,13 +81,13 @@ impl NodeFactory {
         snippet: String,
         line_start: usize,
         branch: &str,
-    ) -> Node {
+    ) -> Signatory {
         let source_uri = format!(
             "{}/blob/{}/{}#L{}",
             repo_uri, branch, file_path, line_start
         );
-        Node::new(
-            NodeType::ApiEndpoint,
+        Signatory::new(
+            SignatoryType::ApiEndpoint,
             source_uri,
             format!("{} {}", method, path),
             snippet,
@@ -100,16 +96,15 @@ impl NodeFactory {
         .with_metadata("path".to_string(), json!(path))
     }
 
-    /// Create a MARKDOWN_SECTION node from documentation
-    pub fn create_doc_node(
+    pub fn register_documentation(
         doc_uri: &str,
         section: &str,
         heading: &str,
         snippet: String,
-    ) -> Node {
+    ) -> Signatory {
         let source_uri = format!("{}#{}", doc_uri, section);
-        Node::new(
-            NodeType::MarkdownSection,
+        Signatory::new(
+            SignatoryType::MarkdownSection,
             source_uri,
             heading.to_string(),
             snippet,
@@ -118,10 +113,9 @@ impl NodeFactory {
         .with_metadata("section".to_string(), json!(section))
     }
 
-    /// Create a CONCEPT node (high-level abstraction)
-    pub fn create_concept_node(name: &str, description: String) -> Node {
-        Node::new(
-            NodeType::Concept,
+    pub fn register_concept(name: &str, description: String) -> Signatory {
+        Signatory::new(
+            SignatoryType::Concept,
             "synthetic://concept".to_string(),
             name.to_string(),
             description,
@@ -130,136 +124,131 @@ impl NodeFactory {
     }
 }
 
-/// Edge Factory: creates universally typed edges capturing relationships.
-pub struct EdgeFactory;
+/// Contract Factory: drafts binding clauses between signatories
+pub struct ContractFactory;
 
-impl EdgeFactory {
-    /// Create a DEPENDS_ON edge: A requires B to function
-    pub fn create_dependency_edge(
-        source_node_id: String,
-        target_node_id: String,
+impl ContractFactory {
+    /// Principal requires guarantor to function
+    pub fn requires_clause(
+        principal_id: String,
+        guarantor_id: String,
         confidence: f32,
-        source: EdgeSource,
+        source: ContractSource,
         reasoning: Option<String>,
-    ) -> Edge {
-        let mut edge = Edge::new(
-            source_node_id,
-            target_node_id,
-            EdgeType::DependsOn,
+    ) -> Contract {
+        let mut contract = Contract::new(
+            principal_id,
+            guarantor_id,
+            ClauseType::Requires,
             confidence,
             source,
         );
         if let Some(r) = reasoning {
-            edge = edge.with_reasoning(r);
+            contract = contract.with_reasoning(r);
         }
-        edge
+        contract
     }
 
-    /// Create an IS_TESTED_BY edge: A is covered by test B
-    pub fn create_test_edge(code_node_id: String, test_node_id: String, confidence: f32) -> Edge {
-        Edge::new(
-            code_node_id,
-            test_node_id,
-            EdgeType::IsTestedBy,
+    /// Principal audits guarantor
+    pub fn audits_clause(principal_id: String, guarantor_id: String, confidence: f32) -> Contract {
+        Contract::new(
+            principal_id,
+            guarantor_id,
+            ClauseType::Audits,
             confidence,
-            EdgeSource::Deterministic,
+            ContractSource::Deterministic,
         )
     }
 
-    /// Create a CALLS edge: A invokes B
-    pub fn create_call_edge(
-        caller_node_id: String,
-        callee_node_id: String,
+    /// Principal calls guarantor
+    pub fn calls_clause(
+        principal_id: String,
+        guarantor_id: String,
         confidence: f32,
-        source: EdgeSource,
-    ) -> Edge {
-        Edge::new(
-            caller_node_id,
-            callee_node_id,
-            EdgeType::Calls,
+        source: ContractSource,
+    ) -> Contract {
+        Contract::new(
+            principal_id,
+            guarantor_id,
+            ClauseType::Calls,
             confidence,
             source,
         )
     }
 
-    /// Create an ENSLAVES edge: A's changes require B to change (high coupling)
-    pub fn create_enslavement_edge(
-        concept_node_id: String,
-        enslaved_concept_id: String,
+    /// Principal enslaves guarantor (high coupling)
+    pub fn enslaves_clause(
+        principal_id: String,
+        guarantor_id: String,
         confidence: f32,
-    ) -> Edge {
-        Edge::new(
-            concept_node_id,
-            enslaved_concept_id,
-            EdgeType::Enslaves,
+    ) -> Contract {
+        Contract::new(
+            principal_id,
+            guarantor_id,
+            ClauseType::Enslaves,
             confidence,
-            EdgeSource::AiInferred,
+            ContractSource::AiInferred,
         )
-        .with_reasoning(
-            "High coupling: changes to source concept force changes to target".to_string(),
-        )
+        .with_reasoning("Binding: changes to principal force changes to guarantor".to_string())
     }
 
-    /// Create a DOCUMENTS edge: Doc A explains implementation detail B
-    pub fn create_documentation_edge(
-        doc_node_id: String,
-        implementation_node_id: String,
-    ) -> Edge {
-        Edge::new(
-            doc_node_id,
-            implementation_node_id,
-            EdgeType::Documents,
+    /// Principal documents guarantor
+    pub fn documents_clause(principal_id: String, guarantor_id: String) -> Contract {
+        Contract::new(
+            principal_id,
+            guarantor_id,
+            ClauseType::Documents,
             1.0,
-            EdgeSource::Deterministic,
+            ContractSource::Deterministic,
         )
     }
 
-    /// Create a USES edge: A utilizes capability B
-    pub fn create_usage_edge(
-        consumer_node_id: String,
-        provider_id: String,
+    /// Principal uses guarantor capability
+    pub fn uses_clause(
+        principal_id: String,
+        guarantor_id: String,
         confidence: f32,
-        source: EdgeSource,
-    ) -> Edge {
-        Edge::new(
-            consumer_node_id,
-            provider_id,
-            EdgeType::Uses,
+        source: ContractSource,
+    ) -> Contract {
+        Contract::new(
+            principal_id,
+            guarantor_id,
+            ClauseType::Uses,
             confidence,
             source,
         )
     }
 }
 
-/// Schema validation: ensure all Nodes and Edges conform to expected structure
-pub struct SchemaValidator;
+/// Contract validator: audit binding schema
+pub struct ContractValidator;
 
-impl SchemaValidator {
-    pub fn validate_node(node: &Node) -> Result<(), String> {
-        if node.id.is_empty() {
-            return Err("Node ID cannot be empty".to_string());
+impl ContractValidator {
+    pub fn audit_signatory(signatory: &Signatory) -> Result<(), String> {
+        if signatory.id.is_empty() {
+            return Err("Signatory ID cannot be empty".to_string());
         }
-        if node.source_uri.is_empty() {
-            return Err("Node source_uri cannot be empty".to_string());
+        if signatory.source_uri.is_empty() {
+            return Err("Signatory source_uri cannot be empty".to_string());
         }
-        if node.label.is_empty() {
-            return Err("Node label cannot be empty".to_string());
+        if signatory.label.is_empty() {
+            return Err("Signatory label cannot be empty".to_string());
         }
         Ok(())
     }
 
-    pub fn validate_edge(edge: &Edge) -> Result<(), String> {
-        if edge.id.is_empty() {
-            return Err("Edge ID cannot be empty".to_string());
+    pub fn audit_contract(contract: &Contract) -> Result<(), String> {
+        if contract.id.is_empty() {
+            return Err("Contract ID cannot be empty".to_string());
         }
-        if edge.source_node_id.is_empty() {
-            return Err("Edge source_node_id cannot be empty".to_string());
+        if contract.principal_id.is_empty() {
+            return Err("Contract principal_id cannot be empty".to_string());
         }
-        if edge.target_node_id.is_empty() {
-            return Err("Edge target_node_id cannot be empty".to_string());
+        if contract.guarantor_id.is_empty() {
+            return Err("Contract guarantor_id cannot be empty".to_string());
         }
-        if edge.confidence_score < 0.0 || edge.confidence_score > 1.0 {
-            return Err("Edge confidence_score must be between 0 and 1".to_string());
+        if contract.confidence < 0.0 || contract.confidence > 1.0 {
+            return Err("Contract confidence must be between 0 and 1".to_string());
         }
         Ok(())
     }

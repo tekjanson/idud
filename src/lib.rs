@@ -1,9 +1,10 @@
 // src/lib.rs
-pub mod link_tree;
+pub mod contract_ledger;
 pub mod pipelines;
 pub mod schemas;
 pub mod types;
 
-pub use link_tree::LinkTree;
-pub use schemas::{EdgeFactory, NodeFactory, SchemaValidator};
+pub use contract_ledger::ContractLedger;
+pub use pipelines::{RepositoryIngestionConfig, RepositoryTraverser};
+pub use schemas::{ContractFactory, ContractValidator, SignatoryFactory};
 pub use types::*;

@@ -1,14 +1,14 @@
 // src/main.rs
-//! idud: Link Tree CLI
-//! Token-efficient concept mapping through durable graph extraction
+//! idud: Contract Ledger CLI
+//! Token-efficient concept mapping through durable contract discovery
 
 use clap::{Parser, Subcommand};
-use idud::{LinkTree, RepositoryIngestionConfig, RepositoryTraverser};
+use idud::{ContractLedger, RepositoryIngestionConfig, RepositoryTraverser};
 use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "idud")]
-#[command(about = "Link Tree: concept mapping for complex systems", long_about = None)]
+#[command(about = "Contract Ledger: immutable registry of software contracts", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -16,7 +16,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Ingest a GitHub repository
+    /// Ingest a GitHub repository and register signatories
     IngestRepo {
         /// Repository URL
         #[arg(short, long)]
@@ -31,22 +31,22 @@ enum Commands {
         work_dir: Option<PathBuf>,
     },
 
-    /// Validate graph consistency
-    Validate,
+    /// Audit contract ledger consistency
+    Audit,
 
-    /// Query the graph
-    Query {
-        /// Starting node ID
+    /// Trace chain of obligation from a signatory
+    Trace {
+        /// Starting signatory ID
         #[arg(short, long)]
         start: String,
 
-        /// Max traversal depth
+        /// Max depth for obligation chain
         #[arg(short, long, default_value = "3")]
         depth: usize,
     },
 
-    /// Export AI Cheat Sheet
-    Export {
+    /// Export contract brief for AI context
+    Brief {
         /// Entity name
         #[arg(short, long)]
         entity: String,
@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
             branch,
             work_dir,
         } => {
-            println!("🔄 Ingesting repository: {}", url);
+            println!("📋 Ingesting repository: {}", url);
 
             let config = RepositoryIngestionConfig {
                 repo_url: url,
@@ -82,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
 
             println!("✅ Ingestion complete!");
             println!("   Files processed: {}", result.files_processed);
-            println!("   Nodes created: {}", result.nodes_created.len());
+            println!("   Signatories registered: {}", result.signatories_registered.len());
 
             if !result.errors.is_empty() {
                 println!("⚠️  Errors encountered:");
@@ -91,28 +91,27 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
 
-            // TODO: persist nodes to database
-            println!("\n📊 Nodes extracted:");
-            for node in result.nodes_created.iter().take(10) {
-                println!("   - {} ({}): {}", node.label, format!("{:?}", node.node_type), node.source_uri);
+            println!("\n📜 Signatories extracted:");
+            for signatory in result.signatories_registered.iter().take(10) {
+                println!("   - {} ({:?}): {}", signatory.label, signatory.signatory_type, signatory.source_uri);
             }
-            if result.nodes_created.len() > 10 {
-                println!("   ... and {} more", result.nodes_created.len() - 10);
+            if result.signatories_registered.len() > 10 {
+                println!("   ... and {} more", result.signatories_registered.len() - 10);
             }
         }
 
-        Commands::Validate => {
-            println!("🔍 Validating graph...");
-            println!("✅ Graph is valid");
+        Commands::Audit => {
+            println!("🔍 Auditing contract ledger...");
+            println!("✅ Ledger audit complete");
         }
 
-        Commands::Query { start, depth } => {
-            println!("🔗 Querying from node: {} (depth: {})", start, depth);
-            println!("📍 Node not found in graph");
+        Commands::Trace { start, depth } => {
+            println!("🔗 Tracing chain of obligation from: {} (depth: {})", start, depth);
+            println!("📍 Signatory not found in ledger");
         }
 
-        Commands::Export { entity, output } => {
-            println!("📋 Exporting cheat sheet for: {}", entity);
+        Commands::Brief { entity, output } => {
+            println!("📋 Exporting contract brief for: {}", entity);
             println!("💾 Exported to: {}", output.display());
         }
     }
