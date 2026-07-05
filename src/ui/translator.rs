@@ -4,6 +4,7 @@
 //! Uses Leptos CSR for zero-install local dashboard
 
 use crate::types::*;
+use leptos::*;
 
 /// Contract sentence struct: parsed, human-readable representation
 #[derive(Debug, Clone)]
@@ -16,7 +17,7 @@ pub struct ContractSentence {
 }
 
 /// Translate ClauseType enum to human-readable verb phrase
-fn clause_to_verb(clause: ClauseType) -> &'static str {
+pub fn clause_to_verb(clause: ClauseType) -> &'static str {
     match clause {
         ClauseType::Calls => "calls",
         ClauseType::Requires => "requires the capabilities of",
@@ -32,7 +33,11 @@ fn clause_to_verb(clause: ClauseType) -> &'static str {
 }
 
 /// Translate a Contract into a human-readable sentence
-pub fn contract_to_sentence(principal: &Signatory, contract: &Contract, guarantor: &Signatory) -> ContractSentence {
+pub fn contract_to_sentence(
+    principal: &Signatory,
+    contract: &Contract,
+    guarantor: &Signatory,
+) -> ContractSentence {
     let clause_verb = clause_to_verb(contract.clause_type);
     let full_sentence = format!(
         "The {} '{}' {} the {} '{}'.",
@@ -67,99 +72,117 @@ pub fn signatory_type_label(sig_type: SignatoryType) -> &'static str {
     }
 }
 
-/// Simple HTML renderer for contract sentences (no Leptos for now to avoid WASM compilation)
-pub struct ContractRenderer;
-
-impl ContractRenderer {
-    pub fn render_sentence(sentence: &ContractSentence, show_confidence: bool) -> String {
-        let confidence_class = if sentence.confidence > 0.85 {
-            "confidence-high"
-        } else if sentence.confidence > 0.7 {
-            "confidence-medium"
-        } else {
-            "confidence-low"
-        };
-
-        let confidence_html = if show_confidence {
-            format!(
-                r#"<span class="confidence-badge">{}% confident</span>"#,
-                (sentence.confidence * 100.0) as i32
-            )
-        } else {
-            String::new()
-        };
-
-        format!(
-            r#"<div class="contract-sentence {}"><p class="sentence-text">{}</p>{}</div>"#,
-            confidence_class, sentence.full_sentence, confidence_html
-        )
+/// Compute confidence class based on confidence score
+fn confidence_class(confidence: f32) -> &'static str {
+    if confidence > 0.85 {
+        "confidence-high"
+    } else if confidence > 0.7 {
+        "confidence-medium"
+    } else {
+        "confidence-low"
     }
+}
 
-    pub fn render_chain(chain: &ChainOfObligation) -> String {
-        let mut html = format!(
-            r#"<div class="chain-of-obligation">
-            <h3>Chain of Obligations for "{}"</h3>
-            <p class="chain-stats">{} signatories involved (max depth: {})</p>
-            <ul class="chain-list">"#,
-            chain.root_signatory.label, chain.total_signatories, chain.max_depth
-        );
+/// ContractSentenceView: Renders a single contract sentence with optional confidence badge
+#[component]
+pub fn ContractSentenceView(
+    sentence: ContractSentence,
+    #[prop(into)] show_confidence: Signal<bool>,
+) -> impl IntoView {
+    let confidence_pct = (sentence.confidence * 100.0) as i32;
+    let css_class = confidence_class(sentence.confidence);
 
-        for (idx, (signatory, contract_opt)) in chain.chain.iter().enumerate() {
-            if let Some(contract) = contract_opt {
-                let reasoning = contract
+    view! {
+        <div class=format!("contract-sentence {}", css_class)>
+            <p class="sentence-text">{sentence.full_sentence}</p>
+            {move || {
+                show_confidence.get().then(|| {
+                    view! {
+                        <span class="confidence-badge">{confidence_pct}% confident</span>
+                    }
+                })
+            }}
+        </div>
+    }
+}
+
+/// ChainOfObligationView: Renders a chain of obligations as an ordered list
+#[component]
+pub fn ChainOfObligationView(chain: ChainOfObligation) -> impl IntoView {
+    let root_label = chain.root_signatory.label.clone();
+    let total_signatories = chain.total_signatories;
+    let max_depth = chain.max_depth;
+    let items = chain
+        .chain
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (signatory, contract_opt))| {
+            let chain_index = idx + 1;
+            let label = signatory.label.clone();
+            let (reasoning, confidence_pct) = if let Some(contract) = contract_opt {
+                let reason = contract
                     .clause_reasoning
-                    .clone()
                     .unwrap_or_else(|| "Contractual obligation".to_string());
+                let conf_pct = (contract.confidence * 100.0) as i32;
+                (reason, conf_pct)
+            } else {
+                ("No contract data".to_string(), 0)
+            };
 
-                html.push_str(&format!(
-                    r#"<li class="chain-link">
-                    <span class="chain-index">{}.</span>
-                    <span class="chain-label">{}</span>
-                    <span class="chain-reason">{}</span>
-                    <span class="chain-confidence">{}%</span>
-                </li>"#,
-                    idx + 1,
-                    signatory.label,
-                    reasoning,
-                    (contract.confidence * 100.0) as i32
-                ));
+            view! {
+                <li class="chain-link">
+                    <span class="chain-index">{chain_index}.</span>
+                    <span class="chain-label">{label}</span>
+                    <span class="chain-reason">{reasoning}</span>
+                    <span class="chain-confidence">{confidence_pct}%</span>
+                </li>
             }
-        }
+        })
+        .collect_view();
 
-        html.push_str("</ul></div>");
-        html
+    view! {
+        <div class="chain-of-obligation">
+            <h3>"Chain of Obligations for \""{root_label}"\""</h3>
+            <p class="chain-stats">{total_signatories}" signatories involved (max depth: "{max_depth}")"</p>
+            <ul class="chain-list">
+                {items}
+            </ul>
+        </div>
     }
+}
 
-    pub fn render_network(signatories: &[Signatory], contracts: &[Contract]) -> String {
-        let signatory_count = signatories.len();
-        let contract_count = contracts.len();
-
-        if contract_count == 0 {
-            format!(
-                r#"<div class="network-view">
-                <div class="network-stats">
-                    <h3>Contract Network Overview</h3>
-                    <p>{} Signatories | {} Contracts</p>
-                </div>
-                <p class="empty-state">No contracts discovered yet.</p>
-            </div>"#,
-                signatory_count, contract_count
-            )
-        } else {
-            format!(
-                r#"<div class="network-view">
-                <div class="network-stats">
-                    <h3>Contract Network Overview</h3>
-                    <p>{} Signatories | {} Contracts</p>
-                </div>
-                <div class="graph-placeholder">
-                    <p>[Network graph rendering placeholder]</p>
-                    <p>Showing {} contracts</p>
-                </div>
-            </div>"#,
-                signatory_count, contract_count, contract_count
-            )
-        }
+/// NetworkOverview: Renders high-level contract network statistics
+#[component]
+pub fn NetworkOverview(
+    #[prop(into)] signatory_count: Signal<usize>,
+    #[prop(into)] contract_count: Signal<usize>,
+) -> impl IntoView {
+    view! {
+        <div class="network-view">
+            <div class="network-stats">
+                <h3>"Contract Network Overview"</h3>
+                <p>
+                    {move || signatory_count.get()}" Signatories | "
+                    {move || contract_count.get()}" Contracts"
+                </p>
+            </div>
+            {move || {
+                if contract_count.get() == 0 {
+                    view! {
+                        <p class="empty-state">"No contracts discovered yet."</p>
+                    }
+                    .into_view()
+                } else {
+                    view! {
+                        <div class="graph-placeholder">
+                            <p>"[Network graph rendering placeholder]"</p>
+                            <p>"Showing "{move || contract_count.get()}" contracts"</p>
+                        </div>
+                    }
+                    .into_view()
+                }
+            }}
+        </div>
     }
 }
 
@@ -193,7 +216,9 @@ mod tests {
 
         let sentence = contract_to_sentence(&principal, &contract, &guarantor);
         assert!(sentence.full_sentence.contains("authenticate"));
-        assert!(sentence.full_sentence.contains("requires the capabilities of"));
+        assert!(sentence
+            .full_sentence
+            .contains("requires the capabilities of"));
         assert!(sentence.full_sentence.contains("hashPassword"));
         assert_eq!(sentence.confidence, 0.95);
     }
@@ -258,34 +283,23 @@ mod tests {
     }
 
     #[test]
-    fn test_contract_renderer_render_sentence() {
-        let sentence = ContractSentence {
-            principal_label: "authenticate".to_string(),
-            clause_description: "calls".to_string(),
-            guarantor_label: "hashPassword".to_string(),
-            full_sentence: "The Function 'authenticate' calls the Function 'hashPassword'.".to_string(),
-            confidence: 0.95,
-        };
-
-        let html = ContractRenderer::render_sentence(&sentence, true);
-        assert!(html.contains("confidence-high"));
-        assert!(html.contains("95% confident"));
-        assert!(html.contains("authenticate"));
+    fn test_confidence_class_high() {
+        assert_eq!(confidence_class(0.95), "confidence-high");
+        assert_eq!(confidence_class(0.86), "confidence-high");
     }
 
     #[test]
-    fn test_contract_renderer_render_sentence_low_confidence() {
-        let sentence = ContractSentence {
-            principal_label: "foo".to_string(),
-            clause_description: "uses".to_string(),
-            guarantor_label: "bar".to_string(),
-            full_sentence: "The Function 'foo' uses the Function 'bar'.".to_string(),
-            confidence: 0.65,
-        };
+    fn test_confidence_class_medium() {
+        assert_eq!(confidence_class(0.85), "confidence-medium");
+        assert_eq!(confidence_class(0.75), "confidence-medium");
+        assert_eq!(confidence_class(0.71), "confidence-medium");
+    }
 
-        let html = ContractRenderer::render_sentence(&sentence, false);
-        assert!(html.contains("confidence-low"));
-        assert!(!html.contains("confident"));
+    #[test]
+    fn test_confidence_class_low() {
+        assert_eq!(confidence_class(0.70), "confidence-low");
+        assert_eq!(confidence_class(0.50), "confidence-low");
+        assert_eq!(confidence_class(0.0), "confidence-low");
     }
 
     #[test]
@@ -310,14 +324,22 @@ mod tests {
     }
 
     #[test]
-    fn test_contract_renderer_network_empty() {
-        let html = ContractRenderer::render_network(&[], &[]);
-        assert!(html.contains("0 Signatories | 0 Contracts"));
-        assert!(html.contains("No contracts discovered yet"));
+    fn test_contract_sentence_creation() {
+        let sentence = ContractSentence {
+            principal_label: "authenticate".to_string(),
+            clause_description: "calls".to_string(),
+            guarantor_label: "hashPassword".to_string(),
+            full_sentence: "The Function 'authenticate' calls the Function 'hashPassword'."
+                .to_string(),
+            confidence: 0.95,
+        };
+
+        assert_eq!(sentence.confidence, 0.95);
+        assert!(sentence.full_sentence.contains("calls"));
     }
 
     #[test]
-    fn test_contract_renderer_network_with_data() {
+    fn test_chain_of_obligation_structure() {
         let sig1 = Signatory::new(
             SignatoryType::Function,
             "uri1".to_string(),
@@ -339,8 +361,15 @@ mod tests {
             ContractSource::Deterministic,
         );
 
-        let html = ContractRenderer::render_network(&[sig1, sig2], &[contract]);
-        assert!(html.contains("2 Signatories | 1 Contracts"));
-        assert!(html.contains("Showing 1 contracts"));
+        let chain = ChainOfObligation {
+            root_signatory: sig1.clone(),
+            chain: vec![(sig1.clone(), Some(contract)), (sig2.clone(), None)],
+            max_depth: 2,
+            total_signatories: 2,
+        };
+
+        assert_eq!(chain.total_signatories, 2);
+        assert_eq!(chain.max_depth, 2);
+        assert_eq!(chain.chain.len(), 2);
     }
 }
