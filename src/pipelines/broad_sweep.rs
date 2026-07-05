@@ -5,7 +5,7 @@
 
 use crate::schemas::{ContractValidator, SignatoryFactory};
 use crate::types::*;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;

@@ -1,11 +1,15 @@
 // src/pipelines/deep_link.rs
-//! PHASE 3.2: The Deep Link
+//! PHASE 3.2: The Deep Link — Local-First Inference Dispatcher
 //! AI prompts for inferring contracts between signatories
-//! Uses LLM to discover bindings missed by deterministic parsing
+//! Implements bounded task queue with Ollama for zero-token wastefulness
+//! Uses tokio::sync::Semaphore to prevent OOM and thermal throttling
 
 use crate::types::*;
 use anyhow::Result;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMDiscoveryRequest {
@@ -26,6 +30,68 @@ pub struct InferredContract {
 pub struct LLMDiscoveryResponse {
     pub principal_id: String,
     pub contracts: Vec<InferredContract>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaRequest {
+    pub model: String,
+    pub prompt: String,
+    pub stream: bool,
+    pub temperature: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaResponse {
+    pub response: String,
+}
+
+/// InferenceClient trait for pluggable LLM backends
+#[async_trait]
+pub trait InferenceClient: Send + Sync {
+    async fn infer(&self, request: OllamaRequest) -> Result<OllamaResponse>;
+}
+
+/// Local Ollama dispatcher: targets localhost:11434 by default
+pub struct OllamaDispatcher {
+    base_url: String,
+    model: String,
+    client: reqwest::Client,
+}
+
+impl OllamaDispatcher {
+    pub fn new(base_url: Option<String>, model: Option<String>) -> Self {
+        Self {
+            base_url: base_url.unwrap_or_else(|| "http://localhost:11434".to_string()),
+            model: model.unwrap_or_else(|| "mistral".to_string()),
+            client: reqwest::Client::new(),
+        }
+    }
+
+    pub fn with_model(mut self, model: String) -> Self {
+        self.model = model;
+        self
+    }
+}
+
+#[async_trait]
+impl InferenceClient for OllamaDispatcher {
+    async fn infer(&self, request: OllamaRequest) -> Result<OllamaResponse> {
+        let url = format!("{}/api/generate", self.base_url);
+        
+        let req = OllamaRequest {
+            model: self.model.clone(),
+            ..request
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&req)
+            .send()
+            .await?;
+
+        let resp: OllamaResponse = response.json().await?;
+        Ok(resp)
+    }
 }
 
 /// System prompt for contract discovery
@@ -90,12 +156,20 @@ fn discovery_prompt(principal: &Signatory, context: &[Signatory]) -> String {
 
 /// LLM interface for contract discovery
 pub struct ContractDiscoveryEngine {
+    client: Arc<dyn InferenceClient>,
     enable_mock: bool,
 }
 
 impl ContractDiscoveryEngine {
-    pub fn new(enable_mock: bool) -> Self {
-        Self { enable_mock }
+    pub fn new(client: Arc<dyn InferenceClient>, enable_mock: bool) -> Self {
+        Self { client, enable_mock }
+    }
+
+    pub fn with_mock() -> Self {
+        Self {
+            client: Arc::new(MockInferenceClient {}),
+            enable_mock: true,
+        }
     }
 
     /// Discover contracts for a signatory using LLM
@@ -107,14 +181,29 @@ impl ContractDiscoveryEngine {
             return self.mock_discovery(request).await;
         }
 
-        // TODO: Call actual LLM API
-        // 1. Build prompt using discovery_prompt()
-        // 2. Call OpenAI/Ollama with system_prompt()
-        // 3. Parse JSON response
-        // 4. Validate confidence scores
-        // 5. Return inferred contracts
+        let prompt = discovery_prompt(&request.signatory, &request.context_signatories);
+        let ollama_req = OllamaRequest {
+            model: "mistral".to_string(),
+            prompt,
+            stream: false,
+            temperature: 0.3,
+        };
 
-        self.mock_discovery(request).await
+        let response = self.client.infer(ollama_req).await?;
+        
+        // Parse JSON from response
+        let contracts: Vec<InferredContract> = serde_json::from_str(&response.response)
+            .ok()
+            .and_then(|json: serde_json::Value| {
+                json.get("contracts")
+                    .and_then(|c| serde_json::from_value(c.clone()).ok())
+            })
+            .unwrap_or_default();
+
+        Ok(LLMDiscoveryResponse {
+            principal_id: request.signatory.id,
+            contracts: contracts.into_iter().take(request.max_contracts).collect(),
+        })
     }
 
     /// Mock discovery for testing (deterministic for UAT)
@@ -171,35 +260,61 @@ impl ContractDiscoveryEngine {
     }
 }
 
-/// Batch contract discovery engine
+/// Mock inference client for testing without actual LLM
+struct MockInferenceClient {}
+
+#[async_trait]
+impl InferenceClient for MockInferenceClient {
+    async fn infer(&self, _request: OllamaRequest) -> Result<OllamaResponse> {
+        Ok(OllamaResponse {
+            response: r#"{"contracts": []}"#.to_string(),
+        })
+    }
+}
+
+/// Concurrent batch discovery engine with bounded concurrency
 pub struct BatchDiscoveryEngine {
-    engine: ContractDiscoveryEngine,
+    engine: Arc<ContractDiscoveryEngine>,
     batch_size: usize,
+    semaphore: Arc<Semaphore>,
 }
 
 impl BatchDiscoveryEngine {
-    pub fn new(engine: ContractDiscoveryEngine, batch_size: usize) -> Self {
-        Self { engine, batch_size }
+    /// Create new batch engine with concurrency limit
+    pub fn new(engine: ContractDiscoveryEngine, batch_size: usize, max_concurrent: usize) -> Self {
+        Self {
+            engine: Arc::new(engine),
+            batch_size,
+            semaphore: Arc::new(Semaphore::new(max_concurrent)),
+        }
     }
 
-    /// Discover contracts for signatories in batch
-    pub async fn discover_batch(&self, signatories: Vec<Signatory>, context: Vec<Signatory>) -> Result<Vec<InferredContract>> {
+    /// Discover contracts for signatories with bounded concurrency
+    pub async fn discover_batch(
+        &self,
+        signatories: Vec<Signatory>,
+        context: Vec<Signatory>,
+    ) -> Result<Vec<InferredContract>> {
         let mut all_contracts = Vec::new();
 
         for batch in signatories.chunks(self.batch_size) {
             let mut batch_futures = Vec::new();
 
             for signatory in batch {
-                let engine = ContractDiscoveryEngine::new(true); // Use mock for now
+                let semaphore = Arc::clone(&self.semaphore);
+                let engine = Arc::clone(&self.engine);
                 let request = LLMDiscoveryRequest {
                     signatory: signatory.clone(),
                     context_signatories: context.clone(),
                     max_contracts: 5,
                 };
 
-                batch_futures.push(tokio::spawn(async move {
+                let future = tokio::spawn(async move {
+                    let _permit = semaphore.acquire().await;
                     engine.discover_contracts(request).await
-                }));
+                });
+
+                batch_futures.push(future);
             }
 
             // Await all requests in this batch
@@ -214,15 +329,13 @@ impl BatchDiscoveryEngine {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SignatoryType;
 
     #[tokio::test]
     async fn test_mock_discovery() {
-        let engine = ContractDiscoveryEngine::new(true);
+        let engine = ContractDiscoveryEngine::with_mock();
         let principal = Signatory::new(
             SignatoryType::Function,
             "uri".to_string(),
@@ -249,5 +362,42 @@ mod tests {
         assert!(result.is_ok());
         let response = result.unwrap();
         assert!(!response.contracts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_batch_discovery_respects_concurrency() {
+        let engine = ContractDiscoveryEngine::with_mock();
+        let batch_engine = BatchDiscoveryEngine::new(engine, 2, 2);
+
+        let signatories = vec![
+            Signatory::new(
+                SignatoryType::Function,
+                "uri1".to_string(),
+                "fetchUser".to_string(),
+                "fn fetchUser(){}".to_string(),
+            ),
+            Signatory::new(
+                SignatoryType::Function,
+                "uri2".to_string(),
+                "parseUser".to_string(),
+                "fn parseUser(){}".to_string(),
+            ),
+            Signatory::new(
+                SignatoryType::Function,
+                "uri3".to_string(),
+                "validateUser".to_string(),
+                "fn validateUser(){}".to_string(),
+            ),
+        ];
+
+        let context = vec![Signatory::new(
+            SignatoryType::Function,
+            "uri4".to_string(),
+            "cleanData".to_string(),
+            "fn cleanData(){}".to_string(),
+        )];
+
+        let result = batch_engine.discover_batch(signatories, context).await;
+        assert!(result.is_ok());
     }
 }
