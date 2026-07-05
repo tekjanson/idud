@@ -3,6 +3,7 @@
 //! Deterministic Signatory registration from repository files
 //! Clones repo, traverses filesystem, chunks code into Signatories.
 
+use crate::analysis::{AILinker, AILinkerConfig};
 use crate::schemas::{ContractValidator, SignatoryFactory};
 use crate::types::*;
 use anyhow::Result;
@@ -20,6 +21,7 @@ pub struct IngestionResult {
     pub repository: String,
     pub files_processed: usize,
     pub signatories_registered: Vec<Signatory>,
+    pub contracts_discovered: Vec<Contract>,
     pub errors: Vec<String>,
 }
 
@@ -150,7 +152,7 @@ impl RepositoryTraverser {
         Ok(sections)
     }
 
-    /// Main ingestion: traverse repo and register all signatories
+    /// Main ingestion: traverse repo and register all signatories and discover contracts
     pub async fn ingest(&self) -> Result<IngestionResult> {
         let mut signatories = Vec::new();
         let mut errors = Vec::new();
@@ -162,6 +164,7 @@ impl RepositoryTraverser {
                 repository: self.config.repo_url.clone(),
                 files_processed: 0,
                 signatories_registered: signatories,
+                contracts_discovered: Vec::new(),
                 errors,
             });
         }
@@ -190,7 +193,7 @@ impl RepositoryTraverser {
                         &self.config.branch,
                     );
                     if ContractValidator::audit_signatory(&file_signatory).is_ok() {
-                        signatories.push(file_signatory);
+                        signatories.push(file_signatory.clone());
                     }
 
                     // Extract code elements for TS/JS
@@ -283,6 +286,28 @@ impl RepositoryTraverser {
             }
         }
 
+        // Analyze dependencies using AI linking (optional post-processing step)
+        let mut contracts_discovered = Vec::new();
+        
+        // Check if AI linking is enabled
+        let enable_ai_linking = std::env::var("ENABLE_AI_LINKING")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(true); // Default to true
+
+        if enable_ai_linking && !signatories.is_empty() {
+            tracing::info!("Starting AI linking pass on {} signatories", signatories.len());
+            let mut linker = AILinker::new(AILinkerConfig::default());
+            match linker.link_files(&signatories, &contracts_discovered) {
+                Ok(ai_contracts) => {
+                    tracing::info!("AI linking inferred {} semantic dependencies", ai_contracts.len());
+                    contracts_discovered.extend(ai_contracts);
+                }
+                Err(e) => {
+                    tracing::warn!("AI linking failed (continuing without AI contracts): {}", e);
+                }
+            }
+        }
+
         // Cleanup
         let _ = std::fs::remove_dir_all(&self.work_dir);
 
@@ -290,6 +315,7 @@ impl RepositoryTraverser {
             repository: self.config.repo_url.clone(),
             files_processed,
             signatories_registered: signatories,
+            contracts_discovered,
             errors,
         })
     }
