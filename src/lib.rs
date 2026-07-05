@@ -20,7 +20,7 @@ pub use training::{
     validate_prediction, write_training_result, calculate_aggregate_metrics,
     calculate_metrics_by_language, ValidationMetrics, LanguageMetrics, TrainingCache, CacheStats,
     RepositoryIngestionOrchestrator, RepoIngestionConfig, RepositoryRegistry,
-    RepositoryEntry, IngestionMetrics, IngestionResults,
+    RepositoryEntry, IngestionMetrics, IngestionResults, IngestionLogEntry,
 };
 pub use training_datalake::{
     AggregatedMetrics, Checkpoint, IngestionStatus, PercentileMetrics, RepoMetadata,

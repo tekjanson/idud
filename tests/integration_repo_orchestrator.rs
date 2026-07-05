@@ -160,13 +160,14 @@ mod tests {
                 languages.insert(&repo.language);
             }
 
-            println!("✓ Registry includes {} different languages:", languages.len());
-            for lang in languages {
+            let lang_count = languages.len();
+            println!("✓ Registry includes {} different languages:", lang_count);
+            for lang in &languages {
                 println!("  - {}", lang);
             }
 
             // Should have at least 3 different languages
-            assert!(languages.len() >= 3, 
+            assert!(lang_count >= 3, 
                 "Registry should have at least 3 languages for diversity");
         }
     }
