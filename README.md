@@ -64,90 +64,93 @@ Products (coherent customer experiences)
 - **Roadmap Integration**: Link features to dependencies before committing timelines
 
 ### AI-First Architecture
-- **Bulk extraction pipelines**: Scripts for repos, docs, APIs (not LLM calls for every file)
-- **Cached relationships**: Computed once, queried many times
-- **Structured output**: All data is machine-readable JSON, not raw text
-- **AI Cheat Sheet**: Auto-generated knowledge base from the concept graph
-- **LLM as analyst, not executor**: Use agents to find gaps or synthesize—not to parse files
+- **90% Deterministic**: Scripts extract code structures, tests, documentation without LLM calls
+- **10% Agentic**: LLM used only to infer relationships missed by parsing
+- **Cached Ledger**: Once computed, queried deterministically (zero-token traversal)
+- **AI Contract Brief**: Auto-generated JSON snapshot of the entire ledger suitable for LLM context
+- **Token Efficiency**: 150+ repos analyzed in minutes, no repeated token burn
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+
+- Rust 1.70+
 - Git
-- (Database choice TBD—PostgreSQL/Neo4j/etc.)
+- Cargo (included with Rust)
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/idud.git
+git clone https://github.com/tekjanson/idud.git
 cd idud
 
-# Install dependencies
-npm install
+# Build the project
+cargo build --release
 
-# Set up environment
+# Set up environment (optional)
 cp .env.example .env
-# Edit .env with your database connection and API keys
+```
+
+### Usage
+
+```bash
+# Ingest a repository
+cargo run -- ingest-repo --url https://github.com/org/repo --branch main
+
+# Audit the contract ledger
+cargo run -- audit
+
+# Trace chain of obligation from a signatory
+cargo run -- trace --start "signatory-id" --depth 3
+
+# Export contract brief for AI context
+cargo run -- brief --entity "entity-name" --output output.json
 ```
 
 ### Development
 
 ```bash
-# Start development server
-npm run dev
+# Run tests (9+ unit tests, 100% coverage for core types)
+cargo test --lib
 
-# Run tests (100% coverage required)
-npm run test
+# Build documentation
+cargo doc --open
 
-# Run linter
-npm run lint
+# Format code
+cargo fmt
 
-# Build for production
-npm run build
-```
-
-### Ingestion Pipeline
-
-```bash
-# Import from a GitHub repository
-npm run ingest:repo -- --url https://github.com/org/repo --entity "Company Name"
-
-# Import documentation (markdown/HTML crawl)
-npm run ingest:docs -- --url https://docs.example.com --entity "Company Name"
-
-# Import knowledge store (Notion, Obsidian export, etc.)
-npm run ingest:knowledge -- --path ./exports/knowledge.json --entity "Company Name"
-
-# Validate and index all data
-npm run validate
-npm run index
+# Lint with clippy
+cargo clippy --all-targets
 ```
 
 ## Architecture
 
-### Data Model
+### The Contract Ledger Model
 
-**Concepts** (what is known)
-- Name, description, category
-- Version history
-- Relationships to other concepts (dependencies, associations, hierarchies)
+**Signatories** (entities entering contractual obligations)
+- Files, functions, tests, API endpoints, documentation sections
+- Immutable references (URI + line number + hash)
+- Raw content snippet for LLM analysis
 
-**Proofs** (evidence supporting concepts)
-- Source: URL, file path, hash
-- Type: API doc, README section, code comment, configuration file, etc.
-- Extracted: timestamp, method (script, manual, LLM-assisted)
-- Content metadata: line ranges, query used to find it
+**Contracts** (bindings between signatories)
+- Principal: source signatory
+- Guarantor: target signatory
+- Clauses: obligation types (Requires, Audits, Calls, Uses, Enslaves, Documents)
+- Confidence: how certain the binding exists (0.0-1.0)
+- Immutable ledger: once recorded, contracts don't change
 
-**Entities** (things being understood)
-- One entity = one database (one company, one product, one ecosystem)
-- Contains concepts and proofs
-- Versioned schema
+**Contract Discovery**
+- Phase 1: Deterministic extraction (90%) - parse code, tests, docs via regex/AST
+- Phase 2: AI analysis (10%) - use LLM to infer relationships missed by parsing
+- Phase 3: Semantic embeddings - cluster related signatories via vector search
+- Phase 4: Queryable ledger - trace chains of obligation, detect violations
 
 ### Technology Stack
 
-**Frontend**
+**Language**: Rust (performance, memory safety, concurrency for 150+ repos)
+**Core**: DashMap (concurrent storage), petgraph (graph traversal), tokio (async I/O)
+**Analysis**: Git2 (repo cloning), regex (code parsing), embedding generators (semantic search)
+**CLI**: clap (argument parsing), tracing (instrumentation)
 - React 18+ with TypeScript
 - State management: Redux/Zustand (TBD)
 - Component library: Chakra UI / Headless UI (TBD)

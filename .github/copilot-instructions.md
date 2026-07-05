@@ -42,7 +42,15 @@ The tool is designed to **minimize token burn** by replacing expensive agentic w
 ## Architecture & Design Principles
 
 ### Knowledge as Contracts
-The database defines entities through their explicit agreements and contracts. If something is written clearly and understood by everyone, it becomes actionable.
+
+The database models entities through explicit **contractual bindings**:
+
+- **Signatories**: Code entities (files, functions, tests, endpoints) that enter into obligations
+- **Contracts**: Immutable bindings between signatories specifying obligation types
+- **Clauses**: Specific obligation types (Requires, Audits, Calls, Uses, Enslaves, Documents)
+- **Confidence**: How certain the AI is that a contract exists (0.0-1.0)
+
+This contract-based model ensures clarity: if something is written as a binding, it's actionable and queryable.
 
 ### Concept Mapping Structure: From Concepts to Products
 
@@ -132,70 +140,116 @@ A dedicated view for product/engineering leadership showing:
    - See dependencies before committing to timelines
    - Identify "enslaved features" that can't be de-coupled without major work
 
-### AI Cheat Sheet Generation
+### AI Contract Brief Generation
 
-**What it is**: A machine-readable knowledge base auto-generated from the concept graph.
+**What it is**: A machine-readable ledger snapshot auto-generated from the Contract Ledger.
 
 **Format**:
 ```json
 {
-  "product": "SaaS Platform",
-  "concepts": [
+  "ledger": "workspace-name",
+  "generated_at": "2024-01-15T10:30:00Z",
+  "signatories": [
     {
-      "id": "auth-user-validation",
-      "name": "User Authentication",
-      "description": "...",
-      "depends_on": ["password-hashing", "session-management"],
-      "enslaves": ["api-access-control", "user-permissions"],
-      "proofs": [
-        { "source": "src/auth/validate.ts", "hash": "..." },
-        { "source": "docs/api#auth", "hash": "..." }
-      ]
+      "id": "auth-validate",
+      "type": "Function",
+      "label": "validateUser",
+      "source_uri": "https://github.com/org/repo/blob/main/src/auth.ts#L42",
+      "signatory_type": "FUNCTION"
     }
   ],
-  "workflows": [
+  "contracts": [
     {
-      "name": "User Login Workflow",
-      "concepts": ["auth-user-validation", "session-management", "password-hashing"],
-      "proofs": [...]
+      "principal_id": "auth-validate",
+      "guarantor_id": "password-hash",
+      "clause_type": "Requires",
+      "confidence": 0.95
     }
   ],
-  "products": [
+  "chains_of_obligation": [
     {
-      "name": "SaaS Platform",
-      "workflows": ["user-login", "data-persistence", "api-access"],
-      "critical_paths": [...]
+      "start": "auth-validate",
+      "path": ["auth-validate", "password-hash", "crypto-lib"],
+      "depth": 2
     }
   ]
 }
 ```
 
-**Usage**: AI systems query this instead of parsing raw docs:
-- "What does the authentication system need?" → Query the cheat sheet
-- "How do I add a new permission type?" → Follow the workflow graph
-- "What breaks if I remove this concept?" → Trace enslaved dependents
+**Usage**: AI systems load this once instead of re-analyzing 150+ repos:
+- "What does this function require?" → Query contracts by principal_id
+- "Will changing this break anything?" → Trace chains of obligation
+- "What tests cover this?" → Find Audits clauses
 
-**Cost**: One-time generation, then queries are free (no LLM tokens).
+**Cost**: One-time generation (~minutes for 150+ repos), then queries are free (no LLM tokens).
 
 ---
 
-## Tech Stack & Build Commands
+## Tech Stack & Implementation
 
-### Ingestion & Data Processing
-- **Bulk Extraction**: Scripts for GitHub (git clone, file parsing), docs crawling, API introspection
-- **ETL Pipeline**: Normalize diverse sources into concept/proof schema
-- **Indexing**: Full-text search, semantic embeddings (pre-computed, cached)
-- **CLI Tools**: Available for data import, validation, consistency checks
+### Current Status
+**Phase 1-3 Complete**: Rust implementation with core ingestion pipeline, type system, and pipelines.
+- ✅ Contract Ledger schema (Signatories, Contracts, Clauses)
+- ✅ Repository ingestion (broad sweep extraction)
+- ✅ AI contract discovery (deep link with mock LLM)
+- ✅ Semantic embeddings (embedding layer)
+- ⏳ Phase 4: Query layer & contract brief export (in progress)
 
-### Frontend
-- **Framework**: React with modern tooling
-- **Build Command**: `npm run build` (to be finalized during setup)
-- **Dev Server**: `npm run dev` (to be finalized during setup)
+### Core Implementation (Rust)
 
-### Database
-- **Technology**: To be determined based on scale (150+ repos = large graph)
-- **Schema Philosophy**: Versioned schema with backward compatibility
-- **Query Performance**: Optimized for relationship traversal (concepts → proofs → concepts)
+**Backend**: Rust with tokio async runtime
+- **Concurrency**: DashMap for thread-safe concurrent ledger storage
+- **Graph Algorithms**: petgraph for obligation tracing and topological traversal
+- **Repository Extraction**: git2 for cloning, regex for code parsing, walkdir for traversal
+- **LLM Integration**: Mock adapter ready for OpenAI/Ollama integration
+- **Embeddings**: Deterministic mock embeddings for testing, integration point for real models
+
+### Build & Test Commands
+
+```bash
+# Build
+cargo build --release
+
+# Test (100% UAT coverage for core types)
+cargo test --lib
+
+# Run CLI
+cargo run -- ingest-repo --url <repo> --branch main
+cargo run -- audit
+cargo run -- trace --start <id> --depth 3
+cargo run -- brief --entity <name> --output out.json
+
+# Format & lint
+cargo fmt
+cargo clippy --all-targets
+```
+
+### Ingestion Pipeline (3 Phases)
+
+**Phase 1: Broad Sweep** (90% of work, deterministic)
+- Clone repository
+- Parse code (functions, classes, types)
+- Extract tests (test() and it() calls)
+- Extract documentation (markdown headers + content)
+- Register all as Signatories
+
+**Phase 2: Deep Link** (10% of work, LLM-assisted)
+- For each Signatory, infer Contracts to other Signatories
+- System prompt: "What obligations exist from this code element to others?"
+- Mock LLM for testing, real API for production
+- Batch processing for efficiency
+- Confidence scoring for each Contract
+
+**Phase 3: Embedding Layer**
+- Generate 384-dim semantic vectors for each Signatory
+- Build vector index for nearest-neighbor search
+- Enable organic clustering without explicit ontology
+- Deterministic seeding for reproducible tests
+
+### Frontend (To Be Implemented)
+- **Framework**: React (to be finalized)
+- **Dashboard**: Dependency network visualization, coupling metrics, contract browser
+- **Build**: `cargo run --release` for backend API, separate frontend build
 
 ### Testing & Quality
 - **Primary Focus**: UAT (User Acceptance Testing) from a user perspective
