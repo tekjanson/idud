@@ -6,6 +6,9 @@ pub mod predictor;
 pub mod orchestrator;
 pub mod validator;
 pub mod token_meter;
+pub mod pr_predictor;
+pub mod repo_ingestion_orchestrator;
+pub mod waymark_validator;
 
 pub use cache::{TrainingCache, CacheEntry, CacheStats};
 pub use discovery::{
@@ -22,3 +25,12 @@ pub use validator::{
     calculate_metrics_by_language, ValidationMetrics, LanguageMetrics,
 };
 pub use token_meter::{TokenMeter, TokenStats};
+pub use pr_predictor::{CoDependencyGraph, PRPredictor, FilePrediction};
+pub use repo_ingestion_orchestrator::{
+    RepositoryIngestionOrchestrator, RepoIngestionConfig, RepositoryRegistry,
+    RepositoryEntry, IngestionMetrics, IngestionStatus, IngestionResults,
+};
+pub use waymark_validator::{
+    load_waymark_contracts, ValidationEngine, PredictionTestCase, PredictionTestResult,
+    ValidationSummary, WaymarkData,
+};
