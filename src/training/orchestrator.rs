@@ -79,7 +79,6 @@ impl Default for TrainingStatus {
 pub struct TrainingConfig {
     pub batch_size: usize,
     pub max_concurrent_agents: usize,
-    pub anthropic_api_key: String,
     pub datalake_path: String,
     pub max_duration_minutes: Option<u64>,  // Stop after N minutes
     pub max_repos: Option<usize>,            // Stop after N repos processed
@@ -197,13 +196,12 @@ impl TrainingOrchestrator {
             let semaphore = semaphore.clone();
             let repo = repo.clone();
             let batch_id = batch.batch_id.clone();
-            let api_key = self.config.anthropic_api_key.clone();
             let run_id = run_id.to_string();
             let cache = self.cache.clone();
 
             let task = tokio::spawn(async move {
                 let _permit = semaphore.acquire().await.ok();
-                Self::process_repo(&repo, &batch_id, &run_id, &api_key, &cache).await
+                Self::process_repo(&repo, &batch_id, &run_id, &cache).await
             });
 
             tasks.push(task);
@@ -235,7 +233,6 @@ impl TrainingOrchestrator {
         repo: &RepoCandidate,
         batch_id: &str,
         run_id: &str,
-        api_key: &str,
         cache: &TrainingCache,
     ) -> Result<(RepoTrainingMetrics, Vec<TrainingRun>)> {
         tracing::info!("Processing repo: {}", repo.url);
@@ -301,7 +298,7 @@ impl TrainingOrchestrator {
                 signatories: signatories.clone(),
             };
 
-            match crate::training::predict_files_from_issue(prediction_req, api_key).await {
+            match crate::training::predict_files_from_issue(prediction_req, "").await {
                 Ok(prediction) => {
                     let mut training_run = TrainingRun::new(
                         repo.url.clone(),

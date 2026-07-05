@@ -1,9 +1,10 @@
-//! AI prediction engine using Claude Haiku
+//! AI prediction engine using Copilot CLI
 //! Predicts which files need to change based on issue description and dependency graph
 
 use crate::types::{Contract, Signatory, SignatoryType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PredictionRequest {
@@ -26,115 +27,53 @@ pub struct TokenUsage {
     pub output_tokens: i32,
 }
 
-#[derive(Debug, Deserialize)]
-struct AnthropicMessage {
-    content: Vec<AnthropicContent>,
-    usage: AnthropicUsage,
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicContent {
-    #[allow(dead_code)]
-    #[serde(rename = "type")]
-    content_type: String,
-    text: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicUsage {
-    input_tokens: i32,
-    output_tokens: i32,
-}
-
-#[derive(Debug, Serialize)]
-struct AnthropicRequest {
-    model: String,
-    max_tokens: i32,
-    system: String,
-    messages: Vec<AnthropicMessage2>,
-}
-
-#[derive(Debug, Serialize)]
-struct AnthropicMessage2 {
-    role: String,
-    content: String,
-}
-
 /// Predicts which files need to change based on issue and dependency graph
-/// Uses Claude Haiku to analyze the issue in context of the code dependency graph
+/// Uses Copilot CLI to invoke Claude and analyze the issue in context of the code dependency graph
 pub async fn predict_files_from_issue(
     request: PredictionRequest,
-    api_key: &str,
+    _api_key: &str,
 ) -> Result<PredictionResponse, Box<dyn std::error::Error>> {
-    // Validate API key upfront
-    if api_key.is_empty() || api_key == "sk-test" {
-        return Err("Anthropic API key not set. Set ANTHROPIC_API_KEY environment variable.".into());
+    // Validate that copilot CLI is available
+    let which_result = Command::new("which").arg("copilot").output();
+    if which_result.is_err() || !which_result?.status.success() {
+        return Err("Copilot CLI not found in PATH. Install from: https://github.com/github/gh-copilot".into());
     }
 
     let graph_text = format_graph_for_context(&request.signatories, &request.dependency_graph);
-    let prompt = build_system_prompt();
+    let system_prompt = build_system_prompt();
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()?;
-    
-    let anthropic_request = AnthropicRequest {
-        model: "claude-3-5-haiku-20241022".to_string(),
-        max_tokens: 1024,
-        system: prompt,
-        messages: vec![AnthropicMessage2 {
-            role: "user".to_string(),
-            content: format!(
-                "ISSUE DESCRIPTION:\n{}\n\n---\n\nDEPENDENCY GRAPH:\n{}\n\nAnalyze the issue and graph to predict affected files.",
-                request.issue_text, graph_text
-            ),
-        }],
-    };
+    let user_message = format!(
+        "{}\n\n---\n\nISSUE DESCRIPTION:\n{}\n\n---\n\nDEPENDENCY GRAPH:\n{}\n\nAnalyze the issue and graph to predict affected files.",
+        system_prompt, request.issue_text, graph_text
+    );
 
-    let response = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&anthropic_request)
-        .send()
-        .await?;
+    // Call copilot CLI with the prompt (-p flag for non-interactive mode)
+    let output = Command::new("copilot")
+        .arg("-p")
+        .arg(&user_message)
+        .output()?;
 
-    // Handle rate limiting and errors
-    match response.status() {
-        reqwest::StatusCode::FORBIDDEN | reqwest::StatusCode::TOO_MANY_REQUESTS => {
-            return Err("Anthropic rate limited (429). Wait before retrying.".into());
-        }
-        s if !s.is_success() => {
-            let error_text = response.text().await?;
-            return Err(format!("Anthropic API error ({}): {}", s, error_text).into());
-        }
-        _ => {}
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Copilot CLI error: {}", stderr).into());
     }
 
-    let message: AnthropicMessage = response.json().await?;
+    let response_text = String::from_utf8(output.stdout)?;
+    let predicted_files = extract_file_list_from_response(&response_text)?;
 
-    // Extract JSON from response
-    let text = message
-        .content
-        .first()
-        .and_then(|c| c.text.as_ref())
-        .ok_or("No text content in response")?;
-
-    let predicted_files = extract_file_list_from_response(text)?;
-    
     // Warn if empty predictions
     if predicted_files.is_empty() {
-        tracing::warn!("Haiku returned empty file list for issue. This may indicate a parsing failure.");
+        tracing::warn!("Copilot returned empty file list for issue. This may indicate a parsing failure.");
     }
 
     Ok(PredictionResponse {
         predicted_files,
-        model_used: "claude-3-5-haiku-20241022".to_string(),
+        model_used: "copilot-cli".to_string(),
         tokens_used: TokenUsage {
-            input_tokens: message.usage.input_tokens,
-            output_tokens: message.usage.output_tokens,
+            input_tokens: 0,
+            output_tokens: 0,
         },
-        reasoning: Some(text.clone()),
+        reasoning: Some(response_text),
     })
 }
 

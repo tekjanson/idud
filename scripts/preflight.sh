@@ -15,19 +15,16 @@ if [ ! -f "./target/release/idud" ]; then
 fi
 echo "  ✓ Binary found"
 
-# Check 2: API Key
+# Check 2: Copilot CLI
 echo ""
-echo "✓ Checking Anthropic API key..."
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-    echo "❌ ANTHROPIC_API_KEY not set!"
-    echo "   Run: export ANTHROPIC_API_KEY='sk-ant-...'"
+echo "✓ Checking Copilot CLI..."
+if ! command -v copilot &> /dev/null; then
+    echo "❌ Copilot CLI not found in PATH!"
+    echo "   Install from: https://github.com/github/gh-copilot"
     exit 1
 fi
-if [ "$ANTHROPIC_API_KEY" = "sk-test" ]; then
-    echo "⚠️  WARNING: Using test API key. Set real key with: export ANTHROPIC_API_KEY='sk-ant-...'"
-else
-    echo "  ✓ API key set (${ANTHROPIC_API_KEY:0:10}...)"
-fi
+COPILOT_VERSION=$(copilot --version 2>/dev/null || echo "unknown")
+echo "  ✓ Copilot CLI available ($COPILOT_VERSION)"
 
 # Check 3: Disk space
 echo ""

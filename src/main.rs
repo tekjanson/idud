@@ -251,14 +251,9 @@ async fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
 
-            // Create and run orchestrator
-            let api_key = std::env::var("ANTHROPIC_API_KEY")
-                .unwrap_or_else(|_| "sk-test".to_string());
-
             let config = TrainingConfig {
                 batch_size,
                 max_concurrent_agents: concurrent,
-                anthropic_api_key: api_key,
                 datalake_path: datalake,
                 max_duration_minutes: duration_minutes,
                 max_repos,

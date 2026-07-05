@@ -114,13 +114,16 @@ clean:
 
 ## help - Show this help message
 help:
-	@echo "$(BOLD)$(BLUE)idud - Contract Ledger Training System$(RESET)"
+	@echo "$(BOLD)$(BLUE)idud - Contract Ledger Training System (Copilot CLI)$(RESET)"
 	@echo ""
 	@echo "$(BOLD)PRIMARY TARGETS:$(RESET)"
 	@grep -E "^## [a-z-]+" Makefile | sed 's/## /  /' | sed 's/ -//' | awk '{printf "  $(GREEN)%-20s$(RESET) %s\n", $$1, substr($$0, index($$0,$$2))}'
 	@echo ""
 	@echo "$(BOLD)UTILITY TARGETS:$(RESET)"
 	@grep -E "^## (build|test|lint|fmt|check-format|clean|cache-status|preflight)" Makefile | sed 's/## /  /' | sed 's/ -//' | awk '{printf "  $(GREEN)%-20s$(RESET) %s\n", $$1, substr($$0, index($$0,$$2))}'
+	@echo ""
+	@echo "$(BOLD)REQUIREMENTS:$(RESET)"
+	@echo "  $(YELLOW)Copilot CLI$(RESET)              - Install from: https://github.com/github/gh-copilot"
 	@echo ""
 	@echo "$(BOLD)ENVIRONMENT VARIABLES:$(RESET)"
 	@echo "  $(YELLOW)REPOS=$(REPOS)$(RESET)              - Number of repos for idud-grow (default: 100)"
