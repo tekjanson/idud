@@ -16,7 +16,7 @@ pub use training::{
     predict_files_from_issue, PredictionRequest, PredictionResponse, TrainingOrchestrator,
     TrainingConfig, TrainingResults, batch_training_jobs, TrainingStatus,
     validate_prediction, write_training_result, calculate_aggregate_metrics,
-    calculate_metrics_by_language, ValidationMetrics, LanguageMetrics,
+    calculate_metrics_by_language, ValidationMetrics, LanguageMetrics, TrainingCache, CacheStats,
 };
 pub use training_datalake::{
     AggregatedMetrics, Checkpoint, IngestionStatus, PercentileMetrics, RepoMetadata,

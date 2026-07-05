@@ -81,48 +81,52 @@ pub async fn discover_training_repos(limit: usize) -> Result<Vec<RepoCandidate>,
         .timeout(REQUEST_TIMEOUT)
         .build()?;
 
+    // Calculate 30 days ago for recent activity filter
+    let thirty_days_ago = chrono::Utc::now() - chrono::Duration::days(30);
+    let date_filter = thirty_days_ago.format("%Y-%m-%d").to_string();
+
     // GraphQL query for repository discovery
     let query = serde_json::json!({
-        "query": r#"
-            query {
-                search(query: "stars:>50 issues:>0 is:public sort:updated-desc updated:>2025-12-05", 
-                       type: REPOSITORY, first: 100) {
-                    nodes {
-                        ... on Repository {
+        "query": format!(r#"
+            query {{
+                search(query: "stars:>50 issues:>0 pr:>0 is:public sort:updated-desc updated:>{}", 
+                       type: REPOSITORY, first: 100) {{
+                    nodes {{
+                        ... on Repository {{
                             name
                             url
-                            owner {
+                            owner {{
                                 login
-                            }
-                            stargazers {
+                            }}
+                            stargazers {{
                                 totalCount
-                            }
-                            primaryLanguage {
+                            }}
+                            primaryLanguage {{
                                 name
-                            }
-                            issues(states: OPEN) {
+                            }}
+                            issues(states: OPEN) {{
                                 totalCount
-                                nodes(last: 1) {
+                                nodes(last: 1) {{
                                     id
-                                }
-                            }
-                            pullRequests(states: OPEN) {
+                                }}
+                            }}
+                            pullRequests(states: OPEN) {{
                                 totalCount
-                                nodes(last: 1) {
+                                nodes(last: 1) {{
                                     id
-                                }
-                            }
+                                }}
+                            }}
                             updatedAt
-                        }
-                    }
-                }
-                rateLimit {
+                        }}
+                    }}
+                }}
+                rateLimit {{
                     limit
                     remaining
                     resetAt
-                }
-            }
-        "#
+                }}
+            }}
+        "#, date_filter)
     });
 
     let response = client

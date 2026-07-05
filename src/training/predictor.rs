@@ -66,10 +66,18 @@ pub async fn predict_files_from_issue(
     request: PredictionRequest,
     api_key: &str,
 ) -> Result<PredictionResponse, Box<dyn std::error::Error>> {
+    // Validate API key upfront
+    if api_key.is_empty() || api_key == "sk-test" {
+        return Err("Anthropic API key not set. Set ANTHROPIC_API_KEY environment variable.".into());
+    }
+
     let graph_text = format_graph_for_context(&request.signatories, &request.dependency_graph);
     let prompt = build_system_prompt();
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()?;
+    
     let anthropic_request = AnthropicRequest {
         model: "claude-3-5-haiku-20241022".to_string(),
         max_tokens: 1024,
@@ -91,9 +99,16 @@ pub async fn predict_files_from_issue(
         .send()
         .await?;
 
-    if !response.status().is_success() {
-        let error_text = response.text().await?;
-        return Err(format!("Anthropic API error: {}", error_text).into());
+    // Handle rate limiting and errors
+    match response.status() {
+        reqwest::StatusCode::FORBIDDEN | reqwest::StatusCode::TOO_MANY_REQUESTS => {
+            return Err("Anthropic rate limited (429). Wait before retrying.".into());
+        }
+        s if !s.is_success() => {
+            let error_text = response.text().await?;
+            return Err(format!("Anthropic API error ({}): {}", s, error_text).into());
+        }
+        _ => {}
     }
 
     let message: AnthropicMessage = response.json().await?;
@@ -106,6 +121,11 @@ pub async fn predict_files_from_issue(
         .ok_or("No text content in response")?;
 
     let predicted_files = extract_file_list_from_response(text)?;
+    
+    // Warn if empty predictions
+    if predicted_files.is_empty() {
+        tracing::warn!("Haiku returned empty file list for issue. This may indicate a parsing failure.");
+    }
 
     Ok(PredictionResponse {
         predicted_files,

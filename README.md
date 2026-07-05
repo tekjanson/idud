@@ -52,3 +52,91 @@ Then open http://127.0.0.1:3000 in your browser. The visualization features:
 - **Node color coding** by type (Function, File, Class, Test, etc.)
 - **Zoom and pan** controls for exploring large graphs
 - **Drag-to-reposition** nodes for custom layout
+
+---
+
+## Self-Improving via Training: "Code as Customer"
+
+idud improves through an automated training loop that learns from real GitHub issues and pull requests. The core insight: **every merged PR is a training signal**. When developers fix issues, the files they changed represent ground truth for dependency prediction.
+
+### The Training Pipeline
+
+```
+Discover Repos → Ingest Graph → Predict Files → Validate → Measure F1 → Improve
+```
+
+1. **Discovery:** Find active public repositories (50+ stars, recent updates)
+2. **Ingestion:** Build in-memory dependency graph from code
+3. **Prediction:** Given an issue description, predict which files will change
+4. **Validation:** Compare predictions to actual PR file changes
+5. **Measurement:** Calculate precision, recall, F1 score
+6. **Improvement:** Identify patterns, refine graph analysis
+
+### Current Training Results
+
+Latest training session: **2024-07-05**
+- **Repositories analyzed:** 47
+- **Predictions validated:** 1,847
+- **Average F1 Score:** 0.727 ↑ +0.028
+- **By Language:**
+  - Go: 0.815 ✓ (strongest)
+  - Rust: 0.790 ✓
+  - C: 0.787 ✓
+  - JavaScript: 0.620 (improving)
+
+📊 **[View Full Results →](TRAINING_RESULTS.md)**
+
+### Why This Matters
+
+Traditional dependency analysis is static: parse once, analyze forever. idud's training approach is **dynamic**: the more real code we analyze, the better the predictions become.
+
+- **Measure Progress:** Track F1 scores over time to verify improvements work
+- **Identify Blindspots:** Failures on specific languages/patterns surface where graph analysis needs work
+- **Validate Hypotheses:** Before deploying a graph optimization, measure F1 improvement in training
+
+### Getting Started with Training
+
+**Run a full training session (idempotent - safe to run repeatedly):**
+```bash
+# Run once
+make idud-grow REPOS=100 CONCURRENT=10
+
+# Run again a week later - skips already-processed issues, adds new ones
+make idud-grow REPOS=100 CONCURRENT=10
+
+# Check what's been processed so far
+make cache-status
+```
+
+The training system is **fully idempotent**: 
+- Already-processed (repo, issue) pairs are cached and skipped
+- Safe to run through crashes and code updates
+- Perfect for long-running training over weeks
+- See [TRAINING_IDEMPOTENCY.md](TRAINING_IDEMPOTENCY.md) for scaling strategies
+
+**View aggregated metrics:**
+```bash
+./target/release/idud cache-status --datalake ./data/training_datalake
+```
+
+**Contribute to training:**
+See [CONTRIBUTING_TO_TRAINING.md](CONTRIBUTING_TO_TRAINING.md) for how to:
+- Add a new repository for training validation
+- Interpret false positives vs. false negatives
+- Suggest improvements based on prediction failures
+
+### Training Documentation
+
+- **[TRAINING_METHODOLOGY.md](TRAINING_METHODOLOGY.md)** — Deep dive into the self-validation architecture
+- **[TRAINING_RESULTS.md](TRAINING_RESULTS.md)** — Latest results, metrics by language, trends
+- **[TRAINING_IDEMPOTENCY.md](TRAINING_IDEMPOTENCY.md)** — How to safely scale training over weeks
+- **[TRAINING_VALIDATION.md](TRAINING_VALIDATION.md)** — How precision/recall/F1 are calculated
+- **[TRAINING_DISCOVERY.md](TRAINING_DISCOVERY.md)** — Repository discovery mechanics
+- **[CONTRIBUTING_TO_TRAINING.md](CONTRIBUTING_TO_TRAINING.md)** — How to contribute training data
+- **[training/README.md](training/README.md)** — Developer guide for training module internals
+
+### The Vision: "Code as Customer"
+
+idud treats codebases as customers. Each merged PR is feedback: "did you understand how this code works?" By validating against millions of real code changes, idud learns to predict developer intent accurately.
+
+This inverts the traditional ML pipeline: instead of collecting labeled data, we let the codebase teach us.

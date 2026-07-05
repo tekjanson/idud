@@ -1,10 +1,12 @@
 //! Training module: discovering and analyzing repositories for training validation.
 
+pub mod cache;
 pub mod discovery;
 pub mod predictor;
 pub mod orchestrator;
 pub mod validator;
 
+pub use cache::{TrainingCache, CacheEntry, CacheStats};
 pub use discovery::{
     discover_training_repos, fetch_issue_and_linked_pr, RepoCandidate, IssueWithPR,
     RateLimitStatus,

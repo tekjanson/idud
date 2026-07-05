@@ -1,0 +1,13 @@
+{
+  "url": "https://github.com/serde-rs/serde",
+  "owner": "serde-rs",
+  "name": "serde",
+  "stars": 9200,
+  "forks": 920,
+  "language": "Rust",
+  "last_activity": "2024-07-04T09:15:00Z",
+  "issue_count": 62,
+  "pr_count": 15,
+  "added_at": "2024-07-01T10:00:00Z",
+  "ingestion_status": "ingested"
+}

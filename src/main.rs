@@ -5,7 +5,7 @@
 use clap::{Parser, Subcommand};
 use idud::{
     ContractLedger, RepositoryIngestionConfig, RepositoryTraverser, serve, WebServerConfig,
-    discover_training_repos, TrainingOrchestrator, TrainingConfig,
+    discover_training_repos, TrainingOrchestrator, TrainingConfig, TrainingCache,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,6 +71,13 @@ enum Commands {
         host: String,
     },
 
+    /// Show training cache status
+    CacheStatus {
+        /// Datalake directory (default: ./data/training_datalake)
+        #[arg(short, long, default_value = "./data/training_datalake")]
+        datalake: String,
+    },
+
     /// Run training validation pipeline
     Train {
         /// Number of repos to train on (default: 10)
@@ -88,6 +95,14 @@ enum Commands {
         /// Datalake directory (default: ./data/training_datalake)
         #[arg(short, long, default_value = "./data/training_datalake")]
         datalake: String,
+
+        /// Maximum duration in minutes (optional)
+        #[arg(short, long)]
+        duration_minutes: Option<u64>,
+
+        /// Maximum number of repos to process (optional)
+        #[arg(short, long)]
+        max_repos: Option<usize>,
     },
 }
 
@@ -167,16 +182,58 @@ async fn main() -> anyhow::Result<()> {
             serve(ledger, config).await?;
         }
 
+        Commands::CacheStatus { datalake } => {
+            println!("📦 Training Cache Status");
+            println!("   Datalake: {}", datalake);
+
+            let cache_path = format!("{}/training_cache.json", datalake);
+            match TrainingCache::new(&cache_path) {
+                Ok(cache) => {
+                    let stats = cache.get_stats();
+                    println!("\n📊 Statistics");
+                    println!("   Total processed: {}", stats.total_processed);
+                    println!("   Completed: {}", stats.completed);
+                    println!("   Failed: {}", stats.failed);
+                    println!("   Pending: {}", stats.pending);
+                    println!("   Unique repos: {}", stats.unique_repos);
+                    if let Some(last) = stats.last_processed {
+                        println!("   Last processed: {}", last);
+                    }
+
+                    let processed_repos = cache.get_processed_repos();
+                    println!("\n🏗️  Processed Repositories ({}):", processed_repos.len());
+                    for (i, repo) in processed_repos.iter().take(10).enumerate() {
+                        println!("   {}. {}", i + 1, repo);
+                    }
+                    if processed_repos.len() > 10 {
+                        println!("   ... and {} more", processed_repos.len() - 10);
+                    }
+                }
+                Err(e) => {
+                    println!("⚠️  Cache not found or empty: {}", e);
+                    println!("   Run 'make idud-grow' to start training");
+                }
+            }
+        }
+
         Commands::Train {
             repos,
             concurrent,
             batch_size,
             datalake,
+            duration_minutes,
+            max_repos,
         } => {
             println!("🎓 Starting training validation pipeline");
             println!("   Repos to process: {}", repos);
             println!("   Concurrent agents: {}", concurrent);
             println!("   Batch size: {}", batch_size);
+            if let Some(mins) = duration_minutes {
+                println!("   Time limit: {} minutes", mins);
+            }
+            if let Some(mr) = max_repos {
+                println!("   Max repos: {}", mr);
+            }
 
             // Discover training candidates
             println!("\n🔍 Discovering {} candidate repositories...", repos);
@@ -203,6 +260,8 @@ async fn main() -> anyhow::Result<()> {
                 max_concurrent_agents: concurrent,
                 anthropic_api_key: api_key,
                 datalake_path: datalake,
+                max_duration_minutes: duration_minutes,
+                max_repos,
             };
 
             let orchestrator = TrainingOrchestrator::new(config)?;
@@ -226,9 +285,10 @@ async fn main() -> anyhow::Result<()> {
 
                 if let Some(percentiles) = metrics.percentiles {
                     println!("\n📊 Percentile Metrics");
-                    println!("   P25 F1: {:.4}", percentiles.p25_f1);
                     println!("   P50 F1: {:.4}", percentiles.p50_f1);
                     println!("   P75 F1: {:.4}", percentiles.p75_f1);
+                    println!("   P90 F1: {:.4}", percentiles.p90_f1);
+                    println!("   P95 F1: {:.4}", percentiles.p95_f1);
                 }
             }
 

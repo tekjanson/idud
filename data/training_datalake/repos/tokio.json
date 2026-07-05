@@ -1,0 +1,13 @@
+{
+  "url": "https://github.com/tokio-rs/tokio",
+  "owner": "tokio-rs",
+  "name": "tokio",
+  "stars": 27500,
+  "forks": 2100,
+  "language": "Rust",
+  "last_activity": "2024-07-04T18:30:00Z",
+  "issue_count": 185,
+  "pr_count": 42,
+  "added_at": "2024-07-01T09:00:00Z",
+  "ingestion_status": "ingested"
+}
