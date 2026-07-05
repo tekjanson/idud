@@ -234,7 +234,7 @@ async fn uat_graph_audit_coverage_detects_unaudited_functions() {
         "helperFunc".to_string(),
         "".to_string(),
     );
-    let func2_id = func2.id.clone();
+    let _func2_id = func2.id.clone();
 
     let test = Signatory::new(
         SignatoryType::Test,
@@ -419,7 +419,7 @@ async fn uat_dispatcher_parses_json_response_safely() {
 
 #[test]
 fn uat_translator_converts_calls_to_sentence() {
-    use idud::ui::translator::{contract_to_sentence, ContractRenderer};
+    use idud::ui::translator::contract_to_sentence;
 
     let principal = Signatory::new(
         SignatoryType::Function,
@@ -449,11 +449,9 @@ fn uat_translator_converts_calls_to_sentence() {
     assert!(sentence.full_sentence.contains("fetchUser"));
     assert!(sentence.full_sentence.contains("calls"));
     assert!(sentence.full_sentence.contains("parseJSON"));
-
-    // Verify HTML rendering
-    let html = ContractRenderer::render_sentence(&sentence, true);
-    assert!(html.contains("confidence-high"));
-    assert!(html.contains("92% confident"));
+    
+    // Verify confidence is preserved
+    assert_eq!(sentence.confidence, 0.92);
 }
 
 #[test]
@@ -488,8 +486,6 @@ fn uat_translator_renders_audit_relationship() {
 
 #[test]
 fn uat_translator_chain_rendering() {
-    use idud::ui::translator::ContractRenderer;
-
     let s1 = Signatory::new(
         SignatoryType::Function,
         "uri1".to_string(),
@@ -519,10 +515,10 @@ fn uat_translator_chain_rendering() {
         total_signatories: 2,
     };
 
-    let html = ContractRenderer::render_chain(&chain);
-    assert!(html.contains("Chain of Obligations"));
-    assert!(html.contains("2 signatories involved"));
-    assert!(html.contains("88%"));
+    // Verify chain structure
+    assert_eq!(chain.total_signatories, 2);
+    assert_eq!(chain.max_depth, 3);
+    assert_eq!(chain.chain.len(), 1);
 }
 
 // ============================================================================

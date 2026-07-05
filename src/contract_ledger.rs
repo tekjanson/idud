@@ -278,6 +278,18 @@ impl ContractLedger {
         let edge_meta = self.edge_metadata.read();
         (node_data.len(), edge_meta.len())
     }
+
+    /// Get all signatories in the ledger
+    pub fn get_all_signatories(&self) -> Vec<Signatory> {
+        let node_data = self.node_data.read();
+        node_data.values().cloned().collect()
+    }
+
+    /// Get all contracts in the ledger
+    pub fn get_all_contracts(&self) -> Vec<Contract> {
+        let edge_meta = self.edge_metadata.read();
+        edge_meta.values().cloned().collect()
+    }
 }
 
 impl Default for ContractLedger {

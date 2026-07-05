@@ -1,0 +1,25 @@
+{
+  "run_id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2024-07-05T10:15:00Z",
+  "repo_url": "https://github.com/example-org/example-repo",
+  "batch_id": "batch-20240705-01",
+  "issue_id": "issue-12345",
+  "issue_text": "Fix memory leak in concurrent HashMap access",
+  "predicted_files": [
+    "src/concurrent/hashmap.rs",
+    "src/concurrent/mod.rs",
+    "tests/concurrent_tests.rs",
+    "benches/hashmap_bench.rs"
+  ],
+  "actual_files": [
+    "src/concurrent/hashmap.rs",
+    "src/concurrent/mod.rs",
+    "CHANGELOG.md"
+  ],
+  "precision": 0.75,
+  "recall": 1.0,
+  "f1": 0.857,
+  "true_positives": 2,
+  "false_positives": 1,
+  "false_negatives": 0
+}
