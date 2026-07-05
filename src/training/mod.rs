@@ -5,6 +5,7 @@ pub mod discovery;
 pub mod predictor;
 pub mod orchestrator;
 pub mod validator;
+pub mod token_meter;
 
 pub use cache::{TrainingCache, CacheEntry, CacheStats};
 pub use discovery::{
@@ -20,3 +21,4 @@ pub use validator::{
     validate_prediction, write_training_result, calculate_aggregate_metrics,
     calculate_metrics_by_language, ValidationMetrics, LanguageMetrics,
 };
+pub use token_meter::{TokenMeter, TokenStats};
