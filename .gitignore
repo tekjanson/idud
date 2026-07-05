@@ -45,3 +45,5 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+target/
+Cargo.lock
