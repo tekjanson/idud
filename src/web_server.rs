@@ -102,6 +102,12 @@ pub async fn serve(ledger: Arc<ContractLedger>, config: WebServerConfig) -> std:
                     .route("/import-url", web::post().to(import_url))
                     .route("/import-file", web::post().to(import_file))
                     .route("/ingest-repo", web::post().to(ingest_repo))
+                    .route("/training/discover", web::get().to(training_discover))
+                    .route("/training/issue/{repo_owner}/{repo_name}/{issue_id}", 
+                           web::get().to(training_fetch_issue))
+                    .route("/training/predict", web::post().to(training_predict))
+                    .route("/training/validate", web::post().to(training_validate))
+                    .route("/training/metrics", web::get().to(training_metrics))
             )
             .service(Files::new("/", "./ui/dist").index_file("index.html"))
     })
@@ -474,6 +480,254 @@ async fn ingest_repo(
                 "message": format!("Failed to ingest repository: {}", e),
                 "signatories_count": 0,
                 "contracts_count": 0,
+            }))
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DiscoverQuery {
+    #[serde(default = "default_discover_limit")]
+    pub limit: usize,
+}
+
+fn default_discover_limit() -> usize {
+    100
+}
+
+async fn training_discover(query: web::Query<DiscoverQuery>) -> HttpResponse {
+    let limit = query.limit.min(1000).max(1);
+    
+    match crate::discover_training_repos(limit).await {
+        Ok(candidates) => {
+            HttpResponse::Ok().json(json!({
+                "success": true,
+                "candidates": candidates,
+                "count": candidates.len(),
+            }))
+        }
+        Err(e) => {
+            eprintln!("❌ Repository discovery failed: {}", e);
+            let status_code = match e {
+                crate::training::discovery::DiscoveryError::RateLimited => {
+                    actix_web::http::StatusCode::TOO_MANY_REQUESTS
+                }
+                _ => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            HttpResponse::build(status_code).json(json!({
+                "success": false,
+                "error": e.to_string(),
+            }))
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TrainingPredictRequest {
+    pub issue_text: String,
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrainingPredictResponse {
+    pub predicted_files: Vec<String>,
+    pub model_used: String,
+    pub tokens_used: crate::training::TokenUsage,
+    pub reasoning: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IssueParams {
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub issue_id: u32,
+}
+
+async fn training_fetch_issue(params: web::Path<IssueParams>) -> HttpResponse {
+    let repo_owner = &params.repo_owner;
+    let repo_name = &params.repo_name;
+    let issue_id = params.issue_id;
+    
+    match crate::fetch_issue_and_linked_pr(repo_owner, repo_name, issue_id).await {
+        Ok(issue_data) => {
+            HttpResponse::Ok().json(json!({
+                "success": true,
+                "data": issue_data,
+            }))
+        }
+        Err(e) => {
+            eprintln!("❌ Issue fetch failed: {}", e);
+            let status_code = match e {
+                crate::training::discovery::DiscoveryError::RateLimited => {
+                    actix_web::http::StatusCode::TOO_MANY_REQUESTS
+                }
+                crate::training::discovery::DiscoveryError::RepoNotFound(_) => {
+                    actix_web::http::StatusCode::NOT_FOUND
+                }
+                _ => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            HttpResponse::build(status_code).json(json!({
+                "success": false,
+                "error": e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn training_predict(
+    req: web::Json<TrainingPredictRequest>,
+    ledger: web::Data<Arc<ContractLedger>>,
+) -> HttpResponse {
+    let api_key = match &req.api_key {
+        Some(key) => key.clone(),
+        None => match std::env::var("ANTHROPIC_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                return HttpResponse::BadRequest().json(json!({
+                    "success": false,
+                    "error": "Anthropic API key not provided and ANTHROPIC_API_KEY environment variable not set",
+                }));
+            }
+        },
+    };
+
+    let signatories = ledger.get_all_signatories();
+    let contracts = ledger.get_all_contracts();
+
+    let prediction_request = crate::PredictionRequest {
+        issue_text: req.issue_text.clone(),
+        dependency_graph: contracts,
+        signatories,
+    };
+
+    match crate::predict_files_from_issue(prediction_request, &api_key).await {
+        Ok(response) => {
+            HttpResponse::Ok().json(json!({
+                "success": true,
+                "predicted_files": response.predicted_files,
+                "model_used": response.model_used,
+                "tokens_used": response.tokens_used,
+                "reasoning": response.reasoning,
+            }))
+        }
+        Err(e) => {
+            eprintln!("❌ Prediction failed: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Prediction failed: {}", e),
+            }))
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TrainingValidateRequest {
+    pub repo_url: String,
+    pub issue_id: String,
+    pub issue_text: String,
+    pub predicted_files: Vec<String>,
+    pub actual_files: Vec<String>,
+    #[serde(default)]
+    pub batch_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrainingValidateResponse {
+    pub success: bool,
+    pub run_id: String,
+    pub metrics: crate::ValidationMetrics,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrainingMetricsResponse {
+    pub success: bool,
+    pub aggregated_metrics: crate::AggregatedMetrics,
+    #[serde(default)]
+    pub language_metrics: Option<std::collections::HashMap<String, crate::LanguageMetrics>>,
+}
+
+async fn training_validate(
+    req: web::Json<TrainingValidateRequest>,
+) -> HttpResponse {
+    let datalake_path = "./data/training_datalake";
+    
+    match crate::TrainingDataLake::new(datalake_path) {
+        Ok(datalake) => {
+            // Validate the prediction
+            let metrics = crate::validate_prediction(
+                req.predicted_files.clone(),
+                req.actual_files.clone(),
+            );
+            
+            // Write to datalake
+            match crate::write_training_result(
+                &datalake,
+                req.repo_url.clone(),
+                req.issue_id.clone(),
+                req.issue_text.clone(),
+                req.predicted_files.clone(),
+                req.actual_files.clone(),
+            ) {
+                Ok(run_id) => {
+                    HttpResponse::Ok().json(TrainingValidateResponse {
+                        success: true,
+                        run_id: run_id.to_string(),
+                        metrics,
+                    })
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to write training result: {}", e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "success": false,
+                        "error": format!("Failed to write training result: {}", e),
+                    }))
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to initialize training datalake: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Failed to initialize training datalake: {}", e),
+            }))
+        }
+    }
+}
+
+async fn training_metrics() -> HttpResponse {
+    let datalake_path = "./data/training_datalake";
+    
+    match crate::TrainingDataLake::new(datalake_path) {
+        Ok(datalake) => {
+            // Calculate aggregated metrics
+            match crate::calculate_aggregate_metrics(&datalake) {
+                Ok(aggregated) => {
+                    // Calculate language metrics
+                    let lang_metrics = crate::calculate_metrics_by_language(&datalake)
+                        .ok()
+                        .and_then(|m| if m.is_empty() { None } else { Some(m) });
+                    
+                    HttpResponse::Ok().json(TrainingMetricsResponse {
+                        success: true,
+                        aggregated_metrics: aggregated,
+                        language_metrics: lang_metrics,
+                    })
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to calculate aggregated metrics: {}", e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "success": false,
+                        "error": format!("Failed to calculate aggregated metrics: {}", e),
+                    }))
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to initialize training datalake: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Failed to initialize training datalake: {}", e),
             }))
         }
     }

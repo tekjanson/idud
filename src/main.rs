@@ -3,7 +3,10 @@
 //! Token-efficient concept mapping through durable contract discovery
 
 use clap::{Parser, Subcommand};
-use idud::{ContractLedger, RepositoryIngestionConfig, RepositoryTraverser, serve, WebServerConfig};
+use idud::{
+    ContractLedger, RepositoryIngestionConfig, RepositoryTraverser, serve, WebServerConfig,
+    discover_training_repos, TrainingOrchestrator, TrainingConfig,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -66,6 +69,25 @@ enum Commands {
         /// Host (default: 127.0.0.1)
         #[arg(short, long, default_value = "127.0.0.1")]
         host: String,
+    },
+
+    /// Run training validation pipeline
+    Train {
+        /// Number of repos to train on (default: 10)
+        #[arg(short, long, default_value = "10")]
+        repos: usize,
+
+        /// Number of concurrent agents (default: 4)
+        #[arg(short, long, default_value = "4")]
+        concurrent: usize,
+
+        /// Batch size per concurrent agent (default: 2)
+        #[arg(short, long, default_value = "2")]
+        batch_size: usize,
+
+        /// Datalake directory (default: ./data/training_datalake)
+        #[arg(short, long, default_value = "./data/training_datalake")]
+        datalake: String,
     },
 }
 
@@ -143,6 +165,74 @@ async fn main() -> anyhow::Result<()> {
             let ledger = Arc::new(ContractLedger::new());
             let config = WebServerConfig { port, host };
             serve(ledger, config).await?;
+        }
+
+        Commands::Train {
+            repos,
+            concurrent,
+            batch_size,
+            datalake,
+        } => {
+            println!("🎓 Starting training validation pipeline");
+            println!("   Repos to process: {}", repos);
+            println!("   Concurrent agents: {}", concurrent);
+            println!("   Batch size: {}", batch_size);
+
+            // Discover training candidates
+            println!("\n🔍 Discovering {} candidate repositories...", repos);
+            let candidates = match discover_training_repos(repos).await {
+                Ok(repos) => repos,
+                Err(e) => {
+                    eprintln!("❌ Failed to discover repositories: {}", e);
+                    return Err(e.into());
+                }
+            };
+            println!("✅ Found {} repositories", candidates.len());
+
+            if candidates.is_empty() {
+                println!("⚠️  No repositories found for training");
+                return Ok(());
+            }
+
+            // Create and run orchestrator
+            let api_key = std::env::var("ANTHROPIC_API_KEY")
+                .unwrap_or_else(|_| "sk-test".to_string());
+
+            let config = TrainingConfig {
+                batch_size,
+                max_concurrent_agents: concurrent,
+                anthropic_api_key: api_key,
+                datalake_path: datalake,
+            };
+
+            let orchestrator = TrainingOrchestrator::new(config)?;
+            let results = orchestrator.run_training_loop(candidates).await?;
+
+            // Display results
+            println!("\n📊 Training Results");
+            println!("   Run ID: {}", results.run_id);
+            println!("   Repos processed: {}", results.total_repos_processed);
+            println!("   Predictions made: {}", results.total_predictions);
+            println!(
+                "   Time: {:.2}s",
+                (results.completed_at - results.started_at).num_seconds()
+            );
+
+            if let Some(metrics) = results.aggregated_metrics {
+                println!("\n📈 Aggregated Metrics");
+                println!("   Avg Precision: {:.4}", metrics.avg_precision);
+                println!("   Avg Recall: {:.4}", metrics.avg_recall);
+                println!("   Avg F1 Score: {:.4}", metrics.avg_f1);
+
+                if let Some(percentiles) = metrics.percentiles {
+                    println!("\n📊 Percentile Metrics");
+                    println!("   P25 F1: {:.4}", percentiles.p25_f1);
+                    println!("   P50 F1: {:.4}", percentiles.p50_f1);
+                    println!("   P75 F1: {:.4}", percentiles.p75_f1);
+                }
+            }
+
+            println!("\n✅ Training pipeline completed successfully!");
         }
     }
 

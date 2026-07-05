@@ -1,10 +1,9 @@
 //! AI prediction engine using Claude Haiku
 //! Predicts which files need to change based on issue description and dependency graph
 
-use crate::types::{Contract, Signatory, SignatoryType, ClauseType};
+use crate::types::{Contract, Signatory, SignatoryType};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PredictionRequest {
@@ -35,6 +34,7 @@ struct AnthropicMessage {
 
 #[derive(Debug, Deserialize)]
 struct AnthropicContent {
+    #[allow(dead_code)]
     #[serde(rename = "type")]
     content_type: String,
     text: Option<String>,

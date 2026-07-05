@@ -5,7 +5,7 @@
 //! It handles serialization/deserialization of training runs, repository metadata, and
 //! aggregated metrics with type-safe JSON support via serde.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;

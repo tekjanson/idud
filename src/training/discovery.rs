@@ -132,7 +132,7 @@ pub async fn discover_training_repos(limit: usize) -> Result<Vec<RepoCandidate>,
         .await?;
 
     let status = response.status();
-    let rate_limit = parse_rate_limit_headers(&response);
+    let _rate_limit = parse_rate_limit_headers(&response);
 
     if status == reqwest::StatusCode::FORBIDDEN {
         return Err(DiscoveryError::RateLimited);
