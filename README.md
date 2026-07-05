@@ -1,64 +1,74 @@
 # idud: I Don't Understand Databases
 
-**A token-efficient knowledge mapping tool for understanding complex systems through concept graphs.**
+**A token-efficient knowledge mapping tool that reveals how system complexity emerges from concept interdependence.**
 
-idud maps large knowledge spaces (150+ repos, product docs, internal knowledge stores) into queryable concept graphs. It's designed to reduce AI token burn by using hard, durable, repeatable data extraction paths instead of wasteful agentic re-analysis.
+idud maps the hidden dependencies between concepts—showing when they lose independence and "enslave" each other. When enough concepts are enslaved, they form workflows. When workflows cluster, they form products. This gives product owners unprecedented visibility into system complexity and gives AI systems a queryable cheat sheet instead of token-wasting re-analysis.
+
+Designed for scale: 150+ repos, product docs, internal knowledge stores. One unified concept graph. One cheat sheet. No token waste.
 
 ## The Problem
 
 Understanding a complex system—a software company, a product, an ecosystem—requires analyzing massive amounts of distributed knowledge: repos, docs, configurations, decision records, contracts. Most tools either:
 - **Waste tokens**: LLM agents re-analyze the same data repeatedly
-- **Lose context**: Treat each document in isolation instead of building connected understanding
+- **Miss dependencies**: Treat each document in isolation instead of building connected understanding
+- **Blind product owners**: Engineering leaders can't see which features are coupled to which, making changes expensive and risky
 - **Don't scale**: Can't handle 150+ repos without exploding costs
 
 ## The Solution
 
-idud builds a **concept graph**—a queryable map of what is known about an entity and the proof supporting each claim.
+idud reveals how complexity emerges: from **concept enslavement**.
+
+### The Core Insight
+
+Concepts start independent. But when they relate to each other, they lose independence—they become "enslaved" to each other. The more enslaved they become:
+- Individual changes affect multiple workflows
+- Hidden dependencies break assumptions
+- Risk balloons exponentially
+- Product owners fly blind
+
+**idud visualizes this enslavement**, showing product owners and AI systems the true shape of their product.
+
+### How It Works
 
 ```
-Entity (e.g., "Company X")
-├── Concept: "Uses microservices architecture"
-│   ├── Proof: kubernetes.yaml in repo A
-│   └── Proof: Architecture doc (link + hash)
-├── Concept: "Supports 3 payment methods"
-│   ├── Proof: API docs (section reference)
-│   └── Proof: Product roadmap
-└── Concept: "Built in TypeScript"
-    ├── Proof: tsconfig.json in repos B, C
-    └── Proof: Contributing guide
+Concepts (independent ideas)
+   ↓ (concepts relate to each other)
+Concept Dependencies ("enslavement")
+   ↓ (clusters of enslaved concepts)
+Workflows (repeatable patterns)
+   ↓ (workflows combine)
+Products (coherent customer experiences)
 ```
 
-Once built, this graph becomes a source of truth:
-- **AI agents query it instead of re-analyzing sources**
-- **Relationships are machine-readable and reusable**
-- **Token burn happens once during ingestion, then queries are cheap**
+**Example**:
+- Concept: "User Password Validation"
+- Enslavement: Depends on "Password Hashing", "Salt Generation", "Rate Limiting"
+- Workflow: "User Authentication" (6 enslaved concepts)
+- Product: "SaaS Platform" (Authentication + Billing + API Access + Data Sync workflows)
 
 ## Key Features
+
+### Concept Enslavement Model
+- **Visualize Dependencies**: See which concepts are enslaved to which
+- **Measure Coupling**: Identify fragile systems with high coupling
+- **Auto-Detect Workflows**: Concepts with high mutual dependency form workflows
+- **Compose Products**: Workflows cluster into coherent products
+- **Change Impact**: Predict blast radius before you break things
+
+### Product Owner Dashboard
+- **Dependency Network**: Visual graph of concept relationships and enslavement
+- **Workflow Inventory**: Auto-detected repeatable patterns
+- **Product Composition**: How workflows combine into customer experiences
+- **Coupling Metrics**: Is this product well-designed or fragile?
+- **Change Impact Analysis**: "If I modify X, what breaks?"
+- **Roadmap Integration**: Link features to dependencies before committing timelines
 
 ### AI-First Architecture
 - **Bulk extraction pipelines**: Scripts for repos, docs, APIs (not LLM calls for every file)
 - **Cached relationships**: Computed once, queried many times
 - **Structured output**: All data is machine-readable JSON, not raw text
+- **AI Cheat Sheet**: Auto-generated knowledge base from the concept graph
 - **LLM as analyst, not executor**: Use agents to find gaps or synthesize—not to parse files
-
-### Scalability
-- Designed for 150+ repositories
-- Handles multiple data sources: GitHub, documentation sites, internal wikis, knowledge stores
-- Efficient indexing and semantic search (embeddings pre-computed)
-- Versioned schema for backward compatibility
-
-### Complete Provenance
-Every concept is linked to its proofs:
-- Source URL + hash (immutable reference)
-- Extraction timestamp and method
-- Version history (how knowledge evolved)
-- Audit trail (what triggered re-analysis)
-
-### User-Friendly
-- React frontend for browsing concept graphs
-- Full-text search + semantic search
-- Visual relationship explorer
-- Workflow-based UI (not database-centric)
 
 ## Getting Started
 
@@ -199,13 +209,34 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ## FAQ
 
+### Why "Concept Enslavement"?
+
+Independence is fragile. When concepts relate to each other, they lose freedom to change independently. That's enslavement. Most systems hide this; idud makes it visible.
+
+**Real example**: You can't change your password hashing algorithm without affecting login rate limiting, session management, password reset, and 2FA. These concepts are enslaved to each other. If one fails, they all fail.
+
+Product owners need to see this enslavement before committing to timelines or architecture changes.
+
 ### Why "I Don't Understand Databases"?
 
 The name reflects a philosophical shift: instead of asking "How do I query this?", we ask "What am I trying to understand about this thing?" The database is a tool for making understanding explicit and queryable—not a thing to master for its own sake.
 
+Also: It's humbling. Databases are designed to scale queries, but understanding complex systems requires understanding *relationships and enslavement*, not just data efficiency.
+
+### How is this different from a dependency graph tool?
+
+Most tools (Maven, npm, cargo) show package dependencies. idud shows **concept dependencies** at the business/feature level:
+- Package dependencies: "npm A depends on npm B"
+- Concept dependencies: "User authentication depends on password validation, rate limiting, and session management"
+
+idud is for PMs, architects, and AI systems trying to understand *what a system does*. Dependency graph tools are for compilers/build systems.
+
 ### How is this different from a wiki or knowledge base?
 
-Wikis are human-written and manually connected. idud is machine-generated from sources and automatically indexed. It's designed for scale (150+ repos) and for feeding AI systems, not for human browsing primarily (though that's a nice side effect).
+Wikis are human-written and manually connected. idud is machine-generated from sources and automatically detects enslavement. It's designed for:
+- **Scale** (150+ repos) without manual effort
+- **AI consumption** (cheat sheets, not human browsing)
+- **Product management** (change impact analysis, roadmap planning)
 
 ### What about schema migrations?
 
@@ -221,8 +252,17 @@ Depends on your data sources and ingestion frequency:
 - **One-time ingestion** of 150 repos: ~$50-200 (mostly embeddings)
 - **Weekly updates**: ~$10-50 (incremental ingestion)
 - **Database + hosting**: ~$20-100/month depending on scale
+- **AI Cheat Sheet queries**: Free (no LLM tokens, just database lookups)
 
 This is dramatically cheaper than continuously re-running LLM agents to understand the same codebase.
+
+### How do I use this for product management?
+
+1. **Ingest** your product: repos, docs, contracts, decision records
+2. **View the dependency dashboard**: See which features are coupled
+3. **Plan changes**: Query "What breaks if I remove feature X?"
+4. **Set timelines**: Understand coupling before committing to delivery dates
+5. **Monitor**: Watch coupling metrics as the product evolves
 
 ## License
 

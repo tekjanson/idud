@@ -44,19 +44,138 @@ The tool is designed to **minimize token burn** by replacing expensive agentic w
 ### Knowledge as Contracts
 The database defines entities through their explicit agreements and contracts. If something is written clearly and understood by everyone, it becomes actionable.
 
-### Concept Mapping Structure
-- **Concepts**: Core ideas or facts about an entity (machine-readable, searchable)
-- **Proofs**: Evidence supporting concepts (documents, URLs, hashes, sources with metadata)
-- **Links**: Deterministic relationships between concepts (hierarchies, dependencies, associations)
-- **Versioning**: Track how knowledge evolves; maintain proof chains across versions
+### Concept Mapping Structure: From Concepts to Products
+
+The database models how complex systems emerge from interdependency:
+
+**Concepts** (independent ideas)
+- Core ideas or facts about an entity (machine-readable, searchable)
+- Initially independent knowledge units
+
+**Concept Dependencies** ("Enslavement")
+- When concepts relate to each other, they lose independence
+- Enslaved concepts: ones that require other concepts to function
+- Track which concepts depend on which (direct dependencies)
+- Track coupling strength (tight vs loose)
+
+**Workflows** (enslaved concept clusters)
+- Emerge when enough concepts become interdependent
+- A repeatable sequence or pattern of enslaved concepts
+- Example: "User Authentication Workflow" enslaves: password validation, session management, token generation, permission checking
+
+**Products** (workflow compositions)
+- Emerge when enough workflows come together
+- A coherent set of enslaved workflows serving a purpose
+- Example: "SaaS Platform" = authentication workflow + data persistence workflow + API workflow + analytics workflow
+
+**Proofs**: Evidence supporting concepts (documents, URLs, hashes, sources with metadata)
+**Links**: Deterministic relationships between concepts (hierarchies, dependencies, associations)
+**Versioning**: Track how knowledge evolves; maintain proof chains across versions
 
 ### One Entity, One Database
-Each idud database represents a single entity with a cohesive data model. Multiple entities require separate databases.
+Each idud database represents a single entity (one product, one company, one ecosystem) with a cohesive data model.
+
+### Product Owner Layer
+A dedicated UI for product owners to visualize and manage:
+- **Dependency Graph**: Which concepts are enslaved to which (visual network)
+- **Coupling Analysis**: Which concepts have high coupling (fragile if changed)
+- **Workflow Inventory**: All identified workflows and their concepts
+- **Product Composition**: How workflows combine into the product
+- **AI Cheat Sheet**: Auto-generated knowledge base for AI systems (no token re-parsing)
+- **Change Impact**: When a concept changes, see which workflows/products are affected
 
 ### LLM as Analyst, Not Executor
 - LLMs synthesize and reason over data paths (not generate them)
 - Use structured queries to answer questions instead of re-running analysis
 - Store all conclusions with provenance (which proofs led to which conclusions)
+- **AI Cheat Sheet Generation**: LLMs create summaries from the concept graph, not from raw docs
+
+---
+
+## Product Owner Layer & AI Cheat Sheet
+
+### Why This Matters
+The key insight: **All system complexity emerges from concept enslavement.** Product owners need to see and manage this.
+
+**Before idud**: Product owners manage features independently, blind to dependencies and coupling.
+**With idud**: Product owners see which concepts are enslaved to which, understand why changes are expensive, and prevent fragile architectures.
+
+**For AI systems**: Instead of re-reading 150 repos, AI queries a pre-built dependency graph and cheat sheet. Massive token savings.
+
+### Product Owner Dashboard
+A dedicated view for product/engineering leadership showing:
+
+1. **Dependency Network Visualization**
+   - Nodes: Concepts (color-coded by coupling strength)
+   - Edges: Dependencies (thickness = coupling strength)
+   - Clusters: Workflows (auto-detected as concept groups)
+   - Composition: Products (workflow groups)
+
+2. **Coupling Metrics**
+   - Which concepts are most enslaved (highest in-degree)
+   - Which concepts enslave the most others (highest out-degree)
+   - Coupling density: Is this product well-designed or spaghetti?
+   - Critical path: Which concepts, if broken, break everything?
+
+3. **Workflow Inventory**
+   - Auto-detected workflows (concept clusters with high internal coupling)
+   - Workflows not yet named/documented
+   - Workflows with weak boundaries (over-coupled to other workflows)
+
+4. **Change Impact Analysis**
+   - "If we modify [concept], which workflows/products are affected?"
+   - Risk assessment: Low, Medium, High impact
+   - Blast radius: Number of dependent concepts
+
+5. **Product Roadmap Integration**
+   - Link planned features to concepts
+   - See dependencies before committing to timelines
+   - Identify "enslaved features" that can't be de-coupled without major work
+
+### AI Cheat Sheet Generation
+
+**What it is**: A machine-readable knowledge base auto-generated from the concept graph.
+
+**Format**:
+```json
+{
+  "product": "SaaS Platform",
+  "concepts": [
+    {
+      "id": "auth-user-validation",
+      "name": "User Authentication",
+      "description": "...",
+      "depends_on": ["password-hashing", "session-management"],
+      "enslaves": ["api-access-control", "user-permissions"],
+      "proofs": [
+        { "source": "src/auth/validate.ts", "hash": "..." },
+        { "source": "docs/api#auth", "hash": "..." }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "User Login Workflow",
+      "concepts": ["auth-user-validation", "session-management", "password-hashing"],
+      "proofs": [...]
+    }
+  ],
+  "products": [
+    {
+      "name": "SaaS Platform",
+      "workflows": ["user-login", "data-persistence", "api-access"],
+      "critical_paths": [...]
+    }
+  ]
+}
+```
+
+**Usage**: AI systems query this instead of parsing raw docs:
+- "What does the authentication system need?" → Query the cheat sheet
+- "How do I add a new permission type?" → Follow the workflow graph
+- "What breaks if I remove this concept?" → Trace enslaved dependents
+
+**Cost**: One-time generation, then queries are free (no LLM tokens).
 
 ---
 
@@ -99,6 +218,14 @@ Each idud database represents a single entity with a cohesive data model. Multip
 2. **Full Traceability**: Every piece of data tracks its source (URL, hash, timestamp, extraction date)
 3. **Versioning**: Concept definitions versioned; know what changed and when
 4. **Audit Trail**: Store why data was ingested (which LLM call, which repo scan, manual entry)
+5. **Enslavement Tracking**: Record when concepts become dependent on others; track coupling evolution
+
+### Concept Dependency Analysis
+1. **Direct Dependencies**: Concept A depends on Concept B (explicit requirement)
+2. **Transitive Dependencies**: Concept A → B → C (indirect coupling chains)
+3. **Coupling Detection**: When enough concepts are interdependent, they form a workflow
+4. **Product Composition**: When enough workflows cluster, they form a product
+5. **Change Impact Analysis**: Predict blast radius of changes based on dependency graph
 
 ### Ingestion & Extraction Best Practices
 1. **Batch Over Streaming**: Process sources in bulk to amortize LLM costs across many concepts
