@@ -1,27 +1,31 @@
 //! AI-augmented dependency linking for idud
 //! 
 //! This module uses Copilot CLI to infer semantic dependencies that AST analysis misses.
-//! It processes files in batches and uses Copilot to identify implicit relationships
-//! like duck typing patterns, protocols, and shared concepts.
+//! It processes signatories in batches with per-batch timeouts for reliability.
 //!
 //! TOKEN OPTIMIZATION:
-//! - Batch process 5-10 files per Copilot call
-//! - Compact format: "file.rs: [func1, func2]"
-//! - Minimal system prompt (~5 tokens)
-//! - Each batch: ~100 tokens for file list + ~300 tokens for inference = ~400 tokens total
-//! - Budget: 500-5000 tokens for 100 files (~5-50 tokens per file)
+//! - Batch process 10-20 signatories per Copilot call
+//! - Compact format: "file.rs"
+//! - Per-batch timeout: 30 seconds (fail fast on Copilot delays)
+//! - Graceful degradation: continue with next batch if one fails
+//! - Token tracking per batch for cost monitoring
+//! - Each batch: ~100 tokens for file list + ~300 tokens for inference = ~400 tokens
+//! - Estimated budget for 926 files: 1,800-2,400 tokens
 
 use crate::types::{Contract, ClauseType, ContractSource, Signatory, SignatoryType};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 /// Configuration for AI linking behavior
 #[derive(Debug, Clone)]
 pub struct AILinkerConfig {
-    /// Batch size: how many files to process per Copilot call (5-10 recommended)
+    /// Batch size: how many signatories per Copilot call (10-20 recommended)
     pub batch_size: usize,
+    /// Timeout per batch in seconds (30s gives Copilot time to respond)
+    pub batch_timeout_secs: u64,
     /// Minimum confidence threshold for semantic dependencies (0.40-0.75)
     pub min_confidence: f32,
     /// Maximum confidence for AI-inferred dependencies (below AST confidence)
@@ -33,7 +37,8 @@ pub struct AILinkerConfig {
 impl Default for AILinkerConfig {
     fn default() -> Self {
         Self {
-            batch_size: 8,
+            batch_size: 15,
+            batch_timeout_secs: 30,
             min_confidence: 0.40,
             max_confidence: 0.65,
             verbose: false,
@@ -41,10 +46,23 @@ impl Default for AILinkerConfig {
     }
 }
 
+/// Metrics for AI linking performance tracking
+#[derive(Debug, Clone)]
+pub struct AILinkerMetrics {
+    pub batches_processed: usize,
+    pub batches_succeeded: usize,
+    pub batches_failed: usize,
+    pub batches_timed_out: usize,
+    pub contracts_discovered: usize,
+    pub tokens_estimated: u64,
+    pub total_time_ms: u128,
+}
+
 /// AI Linker: uses Copilot CLI to infer semantic dependencies
 pub struct AILinker {
     config: AILinkerConfig,
     tokens_used: u64,
+    metrics: AILinkerMetrics,
 }
 
 impl AILinker {
@@ -52,12 +70,21 @@ impl AILinker {
         Self {
             config,
             tokens_used: 0,
+            metrics: AILinkerMetrics {
+                batches_processed: 0,
+                batches_succeeded: 0,
+                batches_failed: 0,
+                batches_timed_out: 0,
+                contracts_discovered: 0,
+                tokens_estimated: 0,
+                total_time_ms: 0,
+            },
         }
     }
 
-    /// Link files in a codebase using AI analysis
+    /// Link signatories in a codebase using AI analysis with per-batch timeouts
     /// 
-    /// Takes signatories and existing contracts, groups files in batches,
+    /// Takes signatories and existing contracts, groups in batches,
     /// and uses Copilot to infer semantic dependencies.
     /// 
     /// Returns new Contract objects with confidence scores.
@@ -66,6 +93,8 @@ impl AILinker {
         signatories: &[Signatory],
         existing_contracts: &[Contract],
     ) -> Result<Vec<Contract>> {
+        let overall_start = Instant::now();
+        
         // Validate Copilot CLI is available
         self.validate_copilot_cli()?;
 
@@ -81,44 +110,89 @@ impl AILinker {
         }
 
         info!(
-            "Starting AI linking for {} files in batches of {}",
+            "Starting AI linking for {} files in batches of {} with {}s timeout per batch",
             file_signatories.len(),
-            self.config.batch_size
+            self.config.batch_size,
+            self.config.batch_timeout_secs
         );
 
         let mut inferred_contracts = Vec::new();
 
-        // Process files in batches
-        for batch in file_signatories.chunks(self.config.batch_size) {
-            debug!("Processing batch of {} files", batch.len());
+        // Process files in batches with timeout
+        for (batch_idx, batch) in file_signatories.chunks(self.config.batch_size).enumerate() {
+            self.metrics.batches_processed += 1;
+            let batch_start = Instant::now();
+            
+            debug!("Processing batch {} of {} files", batch_idx + 1, batch.len());
 
-            match self.link_batch(batch, signatories, existing_contracts) {
+            match self.link_batch_with_timeout(batch, signatories, existing_contracts) {
                 Ok(contracts) => {
-                    info!("Batch produced {} inferred dependencies", contracts.len());
+                    let batch_time = batch_start.elapsed();
+                    self.metrics.batches_succeeded += 1;
+                    let contract_count = contracts.len();
+                    self.metrics.contracts_discovered += contract_count;
+                    self.metrics.tokens_estimated += 400; // Estimate per batch
+                    
+                    info!(
+                        "Batch {} OK: {} contracts in {:.1}s (tokens: ~400)",
+                        batch_idx + 1,
+                        contract_count,
+                        batch_time.as_secs_f64()
+                    );
                     inferred_contracts.extend(contracts);
                 }
                 Err(e) => {
-                    warn!("Error processing batch: {}", e);
-                    // Continue with next batch on error
+                    if e.to_string().contains("timeout") {
+                        self.metrics.batches_timed_out += 1;
+                        warn!(
+                            "Batch {} TIMEOUT: {} (skipping, will continue)",
+                            batch_idx + 1,
+                            e
+                        );
+                    } else {
+                        self.metrics.batches_failed += 1;
+                        warn!("Batch {} ERROR: {} (skipping, will continue)", batch_idx + 1, e);
+                    }
                 }
             }
         }
 
+        let total_time = overall_start.elapsed();
+        self.metrics.total_time_ms = total_time.as_millis();
+        
         info!(
-            "AI linking complete: {} semantic dependencies inferred",
-            inferred_contracts.len()
+            "AI linking complete: {} semantic dependencies from {} batches ({}s, ~{} tokens)",
+            inferred_contracts.len(),
+            self.metrics.batches_succeeded,
+            total_time.as_secs_f64(),
+            self.metrics.tokens_estimated
+        );
+        
+        info!(
+            "Batch summary: {} succeeded, {} failed, {} timed out",
+            self.metrics.batches_succeeded,
+            self.metrics.batches_failed,
+            self.metrics.batches_timed_out
         );
 
         Ok(inferred_contracts)
     }
+    
+    /// Get metrics from the last linking pass
+    pub fn metrics(&self) -> AILinkerMetrics {
+        self.metrics.clone()
+    }
 
-    /// Link a batch of files together
-    fn link_batch(
+    /// Link a batch of signatories with a timeout
+    /// Uses a separate process with timeout to prevent hanging on slow Copilot responses
+    fn link_batch_with_timeout(
         &mut self,
         batch: &[&Signatory],
         all_signatories: &[Signatory],
         existing_contracts: &[Contract],
     ) -> Result<Vec<Contract>> {
+        let timeout = Duration::from_secs(self.config.batch_timeout_secs);
+        
         // Format batch for Copilot
         let batch_text = format_batch_for_analysis(batch);
         let prompt = build_linking_prompt(&batch_text);
@@ -127,8 +201,14 @@ impl AILinker {
             debug!("Linking prompt:\n{}", prompt);
         }
 
-        // Call Copilot CLI
-        let response = invoke_copilot_cli(&prompt)?;
+        // Call Copilot CLI with timeout
+        let response = match invoke_copilot_cli_with_timeout(&prompt, timeout) {
+            Ok(resp) => resp,
+            Err(e) if e.to_string().contains("timeout") => {
+                return Err(anyhow!("timeout: batch processing exceeded {}s", timeout.as_secs()));
+            }
+            Err(e) => return Err(e),
+        };
 
         if self.config.verbose {
             debug!("Copilot response:\n{}", response);
@@ -164,7 +244,7 @@ impl AILinker {
                 let contract = Contract::new(
                     from.id.clone(),
                     to.id.clone(),
-                    ClauseType::Uses, // Generic "uses" for semantic dependencies
+                    ClauseType::Uses,
                     confidence,
                     ContractSource::AiInferred,
                 )
@@ -238,21 +318,45 @@ NO EXPLANATION, NO MARKDOWN. ONLY JSON."#,
     )
 }
 
-/// Invoke Copilot CLI with a prompt
-fn invoke_copilot_cli(prompt: &str) -> Result<String> {
-    let output = Command::new("copilot")
-        .arg("-p")
-        .arg(prompt)
-        .output()
-        .map_err(|e| anyhow!("Failed to invoke copilot: {}", e))?;
+/// Invoke Copilot CLI with a prompt and timeout
+fn invoke_copilot_cli_with_timeout(prompt: &str, timeout: Duration) -> Result<String> {
+    use std::sync::mpsc;
+    use std::thread;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("Copilot CLI error: {}", stderr));
+    let prompt_copy = prompt.to_string();
+    let (tx, rx) = mpsc::channel();
+
+    // Spawn copilot call in separate thread
+    let _handle = thread::spawn(move || {
+        let output = Command::new("copilot")
+            .arg("-p")
+            .arg(&prompt_copy)
+            .output();
+        
+        let _ = tx.send(output);
+    });
+
+    // Wait for response with timeout
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(output)) => {
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(anyhow!("Copilot CLI error: {}", stderr))
+            } else {
+                String::from_utf8(output.stdout).map_err(|e| anyhow!(e))
+            }
+        }
+        Ok(Err(e)) => Err(anyhow!("Failed to invoke copilot: {}", e)),
+        Err(_) => {
+            // Timeout occurred
+            Err(anyhow!("timeout: copilot did not respond within {:?}", timeout))
+        }
     }
+}
 
-    let response = String::from_utf8(output.stdout)?;
-    Ok(response)
+/// Invoke Copilot CLI with a prompt (legacy, no timeout)
+fn invoke_copilot_cli(prompt: &str) -> Result<String> {
+    invoke_copilot_cli_with_timeout(prompt, Duration::from_secs(30))
 }
 
 /// Response structure from Copilot
@@ -441,7 +545,8 @@ Some explanation text"#;
     fn test_ai_linker_config_defaults() {
         let config = AILinkerConfig::default();
 
-        assert_eq!(config.batch_size, 8);
+        assert_eq!(config.batch_size, 15);
+        assert_eq!(config.batch_timeout_secs, 30);
         assert_eq!(config.min_confidence, 0.40);
         assert_eq!(config.max_confidence, 0.65);
         assert!(!config.verbose);

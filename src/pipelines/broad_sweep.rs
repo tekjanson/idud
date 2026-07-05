@@ -396,8 +396,27 @@ impl RepositoryTraverser {
             let mut linker = AILinker::new(AILinkerConfig::default());
             match linker.link_files(&signatories, &contracts_discovered) {
                 Ok(ai_contracts) => {
+                    let metrics = linker.metrics();
                     eprintln!("[INGEST] AI linking found {} contracts", ai_contracts.len());
-                    tracing::info!("AI linking inferred {} semantic dependencies", ai_contracts.len());
+                    eprintln!(
+                        "[INGEST] AI linking metrics: {} batches ({} ok, {} failed, {} timeout), {} tokens, {:.1}s",
+                        metrics.batches_processed,
+                        metrics.batches_succeeded,
+                        metrics.batches_failed,
+                        metrics.batches_timed_out,
+                        metrics.tokens_estimated,
+                        metrics.total_time_ms as f64 / 1000.0
+                    );
+                    tracing::info!(
+                        "AI linking complete: {} dependencies, {} batches (ok: {}, failed: {}, timeout: {}), ~{} tokens, {:.1}s",
+                        ai_contracts.len(),
+                        metrics.batches_processed,
+                        metrics.batches_succeeded,
+                        metrics.batches_failed,
+                        metrics.batches_timed_out,
+                        metrics.tokens_estimated,
+                        metrics.total_time_ms as f64 / 1000.0
+                    );
                     contracts_discovered.extend(ai_contracts);
                 }
                 Err(e) => {

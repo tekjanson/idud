@@ -6,11 +6,11 @@ use clap::{Parser, Subcommand};
 use idud::{
     ContractLedger, RepositoryIngestionConfig, RepositoryTraverser, serve, WebServerConfig,
     discover_training_repos, TrainingOrchestrator, TrainingConfig, TrainingCache,
+    RepositoryIngestionOrchestrator, RepoIngestionConfig,
     Signatory, Contract,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::io::Write;
 
 #[derive(Parser)]
 #[command(name = "idud")]
@@ -113,6 +113,29 @@ enum Commands {
         /// Maximum number of repos to process (optional)
         #[arg(short, long)]
         max_repos: Option<usize>,
+    },
+
+    /// Grow the training data lake by ingesting repositories
+    GrowDatalake {
+        /// Repository registry file (default: data/repos_to_ingest.json)
+        #[arg(short, long, default_value = "data/repos_to_ingest.json")]
+        registry: String,
+
+        /// Output directory for ingested contracts (default: data)
+        #[arg(short, long, default_value = "data")]
+        output: String,
+
+        /// Maximum number of repos to ingest
+        #[arg(short, long)]
+        max_repos: Option<usize>,
+
+        /// Maximum duration in minutes
+        #[arg(short, long)]
+        timeout_minutes: Option<u64>,
+
+        /// Skip already-ingested repos (default: true)
+        #[arg(short, long)]
+        skip_ingested: bool,
     },
 }
 
@@ -398,6 +421,50 @@ async fn main() -> anyhow::Result<()> {
             }
 
             println!("\n✅ Training pipeline completed successfully!");
+        }
+
+        Commands::GrowDatalake {
+            registry,
+            output,
+            max_repos,
+            timeout_minutes,
+            skip_ingested,
+        } => {
+            let config = RepoIngestionConfig {
+                registry_path: PathBuf::from(&registry),
+                output_dir: PathBuf::from(&output),
+                max_repos,
+                timeout_minutes,
+                skip_already_ingested: skip_ingested,
+            };
+
+            match RepositoryIngestionOrchestrator::new(config) {
+                Ok(mut orchestrator) => {
+                    match orchestrator.run().await {
+                        Ok(results) => {
+                            println!("\n✅ Ingestion Results");
+                            println!("   Run ID: {}", results.run_id);
+                            println!("   Repos processed: {}/{}", results.repos_processed, results.total_repos);
+                            println!("   Successful: {}, Failed: {}", results.successful, results.failed);
+                            println!("   Total files: {}", results.total_files);
+                            println!("   Total signatories: {}", results.total_signatories);
+                            println!("   Total contracts: {}", results.total_contracts);
+                            println!("   Duration: {:.1}s ({:.1} min)", 
+                                results.duration_secs, results.duration_secs as f64 / 60.0);
+                            println!("\n💾 Results saved to data/ingestion-log.json");
+                            println!("📊 Progress logged to DATALAKE_LOG.md");
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Ingestion failed: {}", e);
+                            return Err(e.into());
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to initialize orchestrator: {}", e);
+                    return Err(e.into());
+                }
+            }
         }
     }
 

@@ -9,6 +9,6 @@ pub mod ast_analyzer;
 pub mod contract_merger;
 pub mod extractors;
 
-pub use ai_linker::{AILinker, AILinkerConfig};
+pub use ai_linker::{AILinker, AILinkerConfig, AILinkerMetrics};
 pub use ast_analyzer::{ASTAnalyzer, Dependency};
 pub use contract_merger::ContractMerger;

@@ -19,6 +19,8 @@ pub use training::{
     TrainingConfig, TrainingResults, batch_training_jobs, TrainingStatus,
     validate_prediction, write_training_result, calculate_aggregate_metrics,
     calculate_metrics_by_language, ValidationMetrics, LanguageMetrics, TrainingCache, CacheStats,
+    RepositoryIngestionOrchestrator, RepoIngestionConfig, RepositoryRegistry,
+    RepositoryEntry, IngestionMetrics, IngestionResults,
 };
 pub use training_datalake::{
     AggregatedMetrics, Checkpoint, IngestionStatus, PercentileMetrics, RepoMetadata,
