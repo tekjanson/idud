@@ -8,7 +8,7 @@ pub mod validator;
 pub mod token_meter;
 pub mod pr_predictor;
 pub mod repo_ingestion_orchestrator;
-pub mod waymark_understanding;
+pub mod repo_understanding;
 pub mod waymark_validator;
 
 pub use cache::{TrainingCache, CacheEntry, CacheStats};
@@ -31,9 +31,9 @@ pub use repo_ingestion_orchestrator::{
     RepositoryIngestionOrchestrator, RepoIngestionConfig, RepositoryRegistry,
     RepositoryEntry, IngestionMetrics, IngestionStatus, IngestionResults, IngestionLogEntry,
 };
-pub use waymark_understanding::{
+pub use repo_understanding::{
     build_synthetic_understanding, write_synthetic_understanding, DependencyHint, DirectorySummary,
-    ExtensionSummary, SyntheticUnderstanding,
+    ExtensionSummary, JourneyCandidate, SyntheticUnderstanding, TestSummary,
 };
 pub use waymark_validator::{
     load_waymark_contracts, ValidationEngine, PredictionTestCase, PredictionTestResult,

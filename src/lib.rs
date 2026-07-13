@@ -26,7 +26,7 @@ pub use training::{
     RepositoryIngestionOrchestrator, RepoIngestionConfig, RepositoryRegistry,
     RepositoryEntry, IngestionMetrics, IngestionResults, IngestionLogEntry,
     SyntheticUnderstanding, DependencyHint, DirectorySummary, ExtensionSummary,
-    write_synthetic_understanding,
+    JourneyCandidate, TestSummary, write_synthetic_understanding,
 };
 pub use training_datalake::{
     AggregatedMetrics, Checkpoint, IngestionStatus, PercentileMetrics, RepoMetadata,

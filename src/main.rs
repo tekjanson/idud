@@ -138,14 +138,15 @@ enum Commands {
         skip_ingested: bool,
     },
 
-    /// Generate a synthetic understanding artifact for a repository
-    WaymarkUnderstand {
+    /// Generate a synthetic understanding artifact for any repository
+    #[command(name = "understand-repo", alias = "waymark-understand")]
+    UnderstandRepo {
         /// Repository path to analyze
-        #[arg(long, default_value = "/home/tekjanson/Documents/Code/Waymark")]
+        #[arg(long, default_value = ".")]
         repo_path: PathBuf,
 
         /// Output JSON path for the synthetic understanding artifact
-        #[arg(long, default_value = "data/waymark_synthetic_understanding.json")]
+        #[arg(long, default_value = "data/synthetic_understanding.json")]
         output: PathBuf,
     },
 }
@@ -478,11 +479,12 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        Commands::WaymarkUnderstand { repo_path, output } => {
+        Commands::UnderstandRepo { repo_path, output } => {
             println!("🧠 Generating synthetic understanding for {}", repo_path.display());
             let json_path = write_synthetic_understanding(&repo_path, &output)?;
             println!("✅ Wrote synthetic understanding to {}", json_path.display());
             println!("📝 Markdown summary: {}", output.with_extension("md").display());
+            println!("🌐 HTML report: {}", output.with_extension("html").display());
         }
     }
 
