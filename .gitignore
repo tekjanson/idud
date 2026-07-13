@@ -10,6 +10,12 @@ build/
 .vite/
 .next/
 
+# Local data and databases
+*.db
+*.sqlite
+*.sqlite3
+data/
+
 # Environment variables
 .env
 .env.local

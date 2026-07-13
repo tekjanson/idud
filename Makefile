@@ -93,8 +93,8 @@ datalake-grow: build
 		echo "$(BOLD)$(GREEN)✓ Ingestion log updated$(RESET)"; \
 		jq 'length' data/ingestion-log.json | xargs -I {} echo "   Total ingested: {} repos"; \
 	fi
-	@if [ -f DATALAKE_LOG.md ]; then \
-		echo "$(BOLD)$(GREEN)✓ Progress logged to DATALAKE_LOG.md$(RESET)"; \
+	@if [ -f docs/logs/DATALAKE_LOG.md ]; then \
+		echo "$(BOLD)$(GREEN)✓ Progress logged to docs/logs/DATALAKE_LOG.md$(RESET)"; \
 	fi
 	@echo ""
 
@@ -112,9 +112,9 @@ datalake-status:
 		echo "$(YELLOW)No ingestion log found. Run 'make datalake-grow' to start.$(RESET)"; \
 	fi
 	@echo ""
-	@if [ -f DATALAKE_LOG.md ]; then \
-		echo "$(BOLD)Latest Progress (from DATALAKE_LOG.md):$(RESET)"; \
-		head -20 DATALAKE_LOG.md; \
+	@if [ -f docs/logs/DATALAKE_LOG.md ]; then \
+		echo "$(BOLD)Latest Progress (from docs/logs/DATALAKE_LOG.md):$(RESET)"; \
+		head -20 docs/logs/DATALAKE_LOG.md; \
 	fi
 	@echo ""
 

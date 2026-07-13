@@ -21,6 +21,9 @@ cd idud
 cargo build --release
 ```
 
+### Local Development
+The `data/` directory and any `.db`, `.sqlite`, or `.sqlite3` files are ignored by Git so local ingestion artifacts, training dumps, and databases stay off the repository history. On a fresh clone, generate or fetch this data locally before running repository analysis or training commands, for example with the ingestion/training workflow or by restoring the appropriate data bundle from your team’s shared storage.
+
 ### Usage
 
 #### CLI Commands
