@@ -9,25 +9,28 @@ use petgraph::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[derive(Debug)]
+struct LedgerState {
+    uuid_to_node: HashMap<String, NodeIndex>,
+    node_data: HashMap<NodeIndex, Signatory>,
+    edge_metadata: HashMap<(NodeIndex, NodeIndex), Contract>,
+    graph: DiGraph<(), ()>,
+}
+
 /// Pure topological index: O(1) signatory UUID lookup, O(1) neighbor traversal
 pub struct ContractLedger {
-    /// UUID → NodeIndex bidirectional mapping for O(1) lookups
-    uuid_to_node: Arc<RwLock<HashMap<String, NodeIndex>>>,
-    /// NodeIndex → Signatory mapping (graph node weights)
-    node_data: Arc<RwLock<HashMap<NodeIndex, Signatory>>>,
-    /// Contract metadata: edge_id → Contract binding
-    edge_metadata: Arc<RwLock<HashMap<(NodeIndex, NodeIndex), Contract>>>,
-    /// The core topological graph: DiGraph<(), ()> keeps edges only (no weights)
-    graph: Arc<RwLock<DiGraph<(), ()>>>,
+    state: Arc<RwLock<LedgerState>>,
 }
 
 impl ContractLedger {
     pub fn new() -> Self {
         Self {
-            uuid_to_node: Arc::new(RwLock::new(HashMap::new())),
-            node_data: Arc::new(RwLock::new(HashMap::new())),
-            edge_metadata: Arc::new(RwLock::new(HashMap::new())),
-            graph: Arc::new(RwLock::new(DiGraph::new())),
+            state: Arc::new(RwLock::new(LedgerState {
+                uuid_to_node: HashMap::new(),
+                node_data: HashMap::new(),
+                edge_metadata: HashMap::new(),
+                graph: DiGraph::new(),
+            })),
         }
     }
 
@@ -36,18 +39,14 @@ impl ContractLedger {
         crate::schemas::ContractValidator::audit_signatory(&signatory)?;
         let signatory_id = signatory.id.clone();
 
-        // Add node to graph (always succeeds, returns NodeIndex)
-        let node_idx = {
-            let mut graph = self.graph.write();
-            graph.add_node(())
-        };
+        let mut state = self.state.write();
 
-        // Map UUID → NodeIndex
-        self.uuid_to_node
-            .write()
-            .insert(signatory_id.clone(), node_idx);
-        // Store signatory data
-        self.node_data.write().insert(node_idx, signatory);
+        // Add node to graph (always succeeds, returns NodeIndex)
+        let node_idx = state.graph.add_node(());
+
+        // Map UUID → NodeIndex and store signatory data under the same lock.
+        state.uuid_to_node.insert(signatory_id.clone(), node_idx);
+        state.node_data.insert(node_idx, signatory);
 
         Ok(signatory_id)
     }
@@ -57,29 +56,23 @@ impl ContractLedger {
         crate::schemas::ContractValidator::audit_contract(&contract)?;
         let contract_id = contract.id.clone();
 
-        // Lookup both signatories' NodeIndex
-        let principal_node = {
-            let uuid_map = self.uuid_to_node.read();
-            *uuid_map
-                .get(&contract.principal_id)
-                .ok_or_else(|| format!("Signatory {} not found", contract.principal_id))?
-        };
-        let guarantor_node = {
-            let uuid_map = self.uuid_to_node.read();
-            *uuid_map
-                .get(&contract.guarantor_id)
-                .ok_or_else(|| format!("Signatory {} not found", contract.guarantor_id))?
-        };
+        let mut state = self.state.write();
 
-        // Add edge to graph
-        {
-            let mut graph = self.graph.write();
-            graph.add_edge(principal_node, guarantor_node, ());
-        }
+        // Lookup both signatories' NodeIndex.
+        let principal_node = *state
+            .uuid_to_node
+            .get(&contract.principal_id)
+            .ok_or_else(|| format!("Signatory {} not found", contract.principal_id))?;
+        let guarantor_node = *state
+            .uuid_to_node
+            .get(&contract.guarantor_id)
+            .ok_or_else(|| format!("Signatory {} not found", contract.guarantor_id))?;
 
-        // Store contract metadata keyed by (principal_node, guarantor_node)
-        self.edge_metadata
-            .write()
+        // Add edge to graph and store metadata under the same lock to avoid a
+        // visibility gap between the two state updates.
+        state.graph.add_edge(principal_node, guarantor_node, ());
+        state
+            .edge_metadata
             .insert((principal_node, guarantor_node), contract);
 
         Ok(contract_id)
@@ -87,48 +80,53 @@ impl ContractLedger {
 
     /// O(1) signatory lookup: UUID → NodeIndex → Signatory
     pub fn get_signatory(&self, id: &str) -> Option<Signatory> {
-        let uuid_map = self.uuid_to_node.read();
-        let node_idx = uuid_map.get(id)?;
-        let node_data = self.node_data.read();
-        node_data.get(node_idx).cloned()
+        let state = self.state.read();
+        let node_idx = state.uuid_to_node.get(id)?;
+        state.node_data.get(node_idx).cloned()
     }
 
     /// O(k) contract lookup where k = out-degree of principal: use graph neighbors
     pub fn get_obligations(&self, principal_id: &str) -> Vec<Contract> {
-        let uuid_map = self.uuid_to_node.read();
-        let principal_node = match uuid_map.get(principal_id) {
+        let state = self.state.read();
+        let principal_node = match state.uuid_to_node.get(principal_id) {
             Some(n) => *n,
             None => return vec![],
         };
-        drop(uuid_map);
 
-        let graph = self.graph.read();
-        let neighbors: Vec<NodeIndex> = graph.neighbors(principal_node).collect();
-        let edge_meta = self.edge_metadata.read();
+        let neighbors: Vec<NodeIndex> = state.graph.neighbors(principal_node).collect();
 
         neighbors
             .iter()
-            .filter_map(|&neighbor_node| edge_meta.get(&(principal_node, neighbor_node)).cloned())
+            .filter_map(|&neighbor_node| {
+                state
+                    .edge_metadata
+                    .get(&(principal_node, neighbor_node))
+                    .cloned()
+            })
             .collect()
     }
 
     /// O(k) contract lookup where k = in-degree of guarantor: reverse neighbors
     pub fn get_guarantees(&self, guarantor_id: &str) -> Vec<Contract> {
-        let uuid_map = self.uuid_to_node.read();
-        let guarantor_node = match uuid_map.get(guarantor_id) {
+        let state = self.state.read();
+        let guarantor_node = match state.uuid_to_node.get(guarantor_id) {
             Some(n) => *n,
             None => return vec![],
         };
-        drop(uuid_map);
 
-        let graph = self.graph.read();
-        let predecessors: Vec<NodeIndex> =
-            graph.neighbors_directed(guarantor_node, Incoming).collect();
-        let edge_meta = self.edge_metadata.read();
+        let predecessors: Vec<NodeIndex> = state
+            .graph
+            .neighbors_directed(guarantor_node, Incoming)
+            .collect();
 
         predecessors
             .iter()
-            .filter_map(|&pred_node| edge_meta.get(&(pred_node, guarantor_node)).cloned())
+            .filter_map(|&pred_node| {
+                state
+                    .edge_metadata
+                    .get(&(pred_node, guarantor_node))
+                    .cloned()
+            })
             .collect()
     }
 
@@ -140,13 +138,8 @@ impl ContractLedger {
     ) -> Option<ChainOfObligation> {
         let start_signatory = self.get_signatory(start_signatory_id)?;
 
-        let uuid_map = self.uuid_to_node.read();
-        let start_node = *uuid_map.get(start_signatory_id)?;
-        drop(uuid_map);
-
-        let graph = self.graph.read();
-        let node_data = self.node_data.read();
-        let edge_meta = self.edge_metadata.read();
+        let state = self.state.read();
+        let start_node = *state.uuid_to_node.get(start_signatory_id)?;
 
         let mut chain = vec![(start_signatory.clone(), None)];
         let mut visited = std::collections::HashSet::new();
@@ -161,12 +154,12 @@ impl ContractLedger {
             }
 
             // O(1) neighbor iteration: petgraph's neighbor_indices is linear in out-degree only
-            for neighbor in graph.neighbors(current_node) {
+            for neighbor in state.graph.neighbors(current_node) {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
 
-                    if let Some(signatory) = node_data.get(&neighbor) {
-                        if let Some(contract) = edge_meta.get(&(current_node, neighbor)) {
+                    if let Some(signatory) = state.node_data.get(&neighbor) {
+                        if let Some(contract) = state.edge_metadata.get(&(current_node, neighbor)) {
                             chain.push((signatory.clone(), Some(contract.clone())));
                             queue.push_back((neighbor, depth + 1));
                         }
@@ -186,11 +179,10 @@ impl ContractLedger {
     /// Audit for contract violations: signatories without audit coverage (O(n) scan over node_data)
     pub fn audit_contract_coverage(&self) -> ContractAuditReport {
         let mut audited_signatories = std::collections::HashSet::new();
-        let node_data = self.node_data.read();
-        let edge_meta = self.edge_metadata.read();
+        let state = self.state.read();
 
         // Find all signatories involved in audit contracts
-        for ((_, _), contract) in edge_meta.iter() {
+        for ((_, _), contract) in state.edge_metadata.iter() {
             if contract.clause_type == ClauseType::Audits {
                 audited_signatories.insert(contract.principal_id.clone());
                 audited_signatories.insert(contract.guarantor_id.clone());
@@ -198,7 +190,8 @@ impl ContractLedger {
         }
 
         // Find unaudited code signatories
-        let unaudited: Vec<Signatory> = node_data
+        let unaudited: Vec<Signatory> = state
+            .node_data
             .values()
             .filter(|signatory| {
                 matches!(
@@ -209,7 +202,7 @@ impl ContractLedger {
             .cloned()
             .collect();
 
-        let total_signatories = node_data.len();
+        let total_signatories = state.node_data.len();
         let audit_coverage_percent = if total_signatories > 0 {
             ((audited_signatories.len() as f32) / (total_signatories as f32)) * 100.0
         } else {
@@ -235,11 +228,10 @@ impl ContractLedger {
         let mut by_label: HashMap<String, String> = HashMap::new();
         let mut in_degree: HashMap<String, usize> = HashMap::new();
 
-        let node_data = self.node_data.read();
-        let edge_meta = self.edge_metadata.read();
+        let state = self.state.read();
 
         // Index signatories by type and label
-        for signatory in node_data.values() {
+        for signatory in state.node_data.values() {
             by_label.insert(signatory.label.clone(), signatory.id.clone());
             let type_name = format!("{:?}", signatory.signatory_type);
             by_type
@@ -249,7 +241,7 @@ impl ContractLedger {
         }
 
         // Calculate in-degree (obligation count)
-        for (_, contract) in edge_meta.iter() {
+        for (_, contract) in state.edge_metadata.iter() {
             *in_degree.entry(contract.guarantor_id.clone()).or_insert(0) += 1;
         }
 
@@ -260,8 +252,8 @@ impl ContractLedger {
         AIContractBrief {
             entity: entity.to_string(),
             generated_at: chrono::Utc::now(),
-            signatory_count: node_data.len(),
-            contract_count: edge_meta.len(),
+            signatory_count: state.node_data.len(),
+            contract_count: state.edge_metadata.len(),
             conceptual_contracts: vec![],
             workflow_bindings: vec![],
             ledger_index: LedgerIndex {
@@ -274,21 +266,20 @@ impl ContractLedger {
 
     /// Statistics
     pub fn stats(&self) -> (usize, usize) {
-        let node_data = self.node_data.read();
-        let edge_meta = self.edge_metadata.read();
-        (node_data.len(), edge_meta.len())
+        let state = self.state.read();
+        (state.node_data.len(), state.edge_metadata.len())
     }
 
     /// Get all signatories in the ledger
     pub fn get_all_signatories(&self) -> Vec<Signatory> {
-        let node_data = self.node_data.read();
-        node_data.values().cloned().collect()
+        let state = self.state.read();
+        state.node_data.values().cloned().collect()
     }
 
     /// Get all contracts in the ledger
     pub fn get_all_contracts(&self) -> Vec<Contract> {
-        let edge_meta = self.edge_metadata.read();
-        edge_meta.values().cloned().collect()
+        let state = self.state.read();
+        state.edge_metadata.values().cloned().collect()
     }
 }
 
@@ -316,6 +307,40 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), id);
         assert!(ledger.get_signatory(&id).is_some());
+    }
+
+    #[test]
+    fn draft_contract_keeps_graph_and_metadata_in_sync() {
+        let ledger = ContractLedger::new();
+        let principal = Signatory::new(
+            SignatoryType::Function,
+            "repo/principal.rs".to_string(),
+            "principal".to_string(),
+            "fn principal() {}".to_string(),
+        );
+        let guarantor = Signatory::new(
+            SignatoryType::Function,
+            "repo/guarantor.rs".to_string(),
+            "guarantor".to_string(),
+            "fn guarantor() {}".to_string(),
+        );
+
+        let principal_id = ledger.register_signatory(principal).unwrap();
+        let guarantor_id = ledger.register_signatory(guarantor).unwrap();
+        let contract = Contract::new(
+            principal_id.clone(),
+            guarantor_id.clone(),
+            ClauseType::Uses,
+            0.8,
+            ContractSource::Deterministic,
+        );
+
+        let contract_id = ledger.draft_contract(contract).unwrap();
+        let obligations = ledger.get_obligations(&principal_id);
+
+        assert_eq!(contract_id, obligations[0].id);
+        assert_eq!(obligations[0].principal_id, principal_id);
+        assert_eq!(obligations[0].guarantor_id, guarantor_id);
     }
 
     #[test]

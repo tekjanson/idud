@@ -13,7 +13,7 @@ use crate::training_datalake::{
     AggregatedMetrics, Checkpoint, PercentileMetrics, TimeWindow, TrainingDataLake, TrainingRun,
 };
 use crate::{RepositoryIngestionConfig, RepositoryTraverser};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -70,6 +70,18 @@ impl Default for TrainingStatus {
     fn default() -> Self {
         TrainingStatus::Pending
     }
+}
+
+fn sanitize_metric_value(value: f64) -> f64 {
+    if value.is_finite() {
+        value
+    } else {
+        0.0
+    }
+}
+
+fn sort_f64_values(values: &mut [f64]) {
+    values.sort_by(|a, b| a.total_cmp(b));
 }
 
 /// Configuration for the training orchestrator
@@ -218,7 +230,10 @@ impl TrainingOrchestrator {
             let cache = self.cache.clone();
 
             let task = tokio::spawn(async move {
-                let _permit = semaphore.acquire().await.ok();
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .map_err(|err| anyhow!("failed to acquire semaphore permit: {err}"))?;
                 Self::process_repo(&repo, &batch_id, &run_id, &cache).await
             });
 
@@ -338,9 +353,9 @@ impl TrainingOrchestrator {
                     );
                     training_run.batch_id = Some(batch_id.to_string());
 
-                    precisions.push(training_run.precision);
-                    recalls.push(training_run.recall);
-                    f1s.push(training_run.f1);
+                    precisions.push(sanitize_metric_value(training_run.precision));
+                    recalls.push(sanitize_metric_value(training_run.recall));
+                    f1s.push(sanitize_metric_value(training_run.f1));
 
                     repo_metrics.total_true_positives += training_run.true_positives;
                     repo_metrics.total_false_positives += training_run.false_positives;
@@ -383,9 +398,11 @@ impl TrainingOrchestrator {
 
         // Calculate repo-level aggregates
         if !precisions.is_empty() {
-            repo_metrics.avg_precision = precisions.iter().sum::<f64>() / precisions.len() as f64;
-            repo_metrics.avg_recall = recalls.iter().sum::<f64>() / recalls.len() as f64;
-            repo_metrics.avg_f1 = f1s.iter().sum::<f64>() / f1s.len() as f64;
+            repo_metrics.avg_precision =
+                sanitize_metric_value(precisions.iter().sum::<f64>() / precisions.len() as f64);
+            repo_metrics.avg_recall =
+                sanitize_metric_value(recalls.iter().sum::<f64>() / recalls.len() as f64);
+            repo_metrics.avg_f1 = sanitize_metric_value(f1s.iter().sum::<f64>() / f1s.len() as f64);
         }
 
         tracing::info!(
@@ -442,23 +459,41 @@ impl TrainingOrchestrator {
             return Err(anyhow::anyhow!("No training runs to aggregate"));
         }
 
-        let total_precision: f64 = training_runs.iter().map(|r| r.precision).sum();
-        let total_recall: f64 = training_runs.iter().map(|r| r.recall).sum();
-        let total_f1: f64 = training_runs.iter().map(|r| r.f1).sum();
+        let total_precision: f64 = training_runs
+            .iter()
+            .map(|r| sanitize_metric_value(r.precision))
+            .sum();
+        let total_recall: f64 = training_runs
+            .iter()
+            .map(|r| sanitize_metric_value(r.recall))
+            .sum();
+        let total_f1: f64 = training_runs
+            .iter()
+            .map(|r| sanitize_metric_value(r.f1))
+            .sum();
         let count = training_runs.len() as f64;
 
-        let avg_precision = total_precision / count;
-        let avg_recall = total_recall / count;
-        let avg_f1 = total_f1 / count;
+        let avg_precision = sanitize_metric_value(total_precision / count);
+        let avg_recall = sanitize_metric_value(total_recall / count);
+        let avg_f1 = sanitize_metric_value(total_f1 / count);
 
         // Calculate percentiles
-        let mut precisions: Vec<f64> = training_runs.iter().map(|r| r.precision).collect();
-        let mut recalls: Vec<f64> = training_runs.iter().map(|r| r.recall).collect();
-        let mut f1s: Vec<f64> = training_runs.iter().map(|r| r.f1).collect();
+        let mut precisions: Vec<f64> = training_runs
+            .iter()
+            .map(|r| sanitize_metric_value(r.precision))
+            .collect();
+        let mut recalls: Vec<f64> = training_runs
+            .iter()
+            .map(|r| sanitize_metric_value(r.recall))
+            .collect();
+        let mut f1s: Vec<f64> = training_runs
+            .iter()
+            .map(|r| sanitize_metric_value(r.f1))
+            .collect();
 
-        precisions.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        recalls.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        f1s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sort_f64_values(&mut precisions);
+        sort_f64_values(&mut recalls);
+        sort_f64_values(&mut f1s);
 
         let len = precisions.len();
         let _p25_idx = len / 4;

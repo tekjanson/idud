@@ -1,10 +1,12 @@
 // src/analysis/ast_analyzer.rs
-//! AST-based dependency analyzer
-//! Extracts contracts from source code using language-specific regex extractors
+//! Dependency analyzer
+//! Extracts likely source-code relationships using language-specific regex
+//! extractors. This module is regex-backed rather than a full AST walk; use
+//! TreeSitterParser from src/core/parser when structural syntax graphs are needed.
 
 use super::extractors::{PythonExtractor, RustExtractor, TypeScriptExtractor};
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Component, Path};
 
 /// Represents a dependency extracted from source code
 #[derive(Debug, Clone)]
@@ -31,10 +33,12 @@ impl Dependency {
     }
 }
 
-/// Main AST analyzer struct
-pub struct ASTAnalyzer;
+/// Dependency analyzer over source text.
+pub struct DependencyAnalyzer;
 
-impl ASTAnalyzer {
+pub type ASTAnalyzer = DependencyAnalyzer;
+
+impl DependencyAnalyzer {
     /// Analyze a Rust file and extract dependencies
     pub fn analyze_rust_file(file_uri: &str, content: &str) -> Vec<Dependency> {
         let mut deps = Vec::new();
@@ -202,13 +206,11 @@ impl ASTAnalyzer {
 
         let mut all_deps = Vec::new();
 
-        for entry in WalkDir::new(repo_path)
+        let walker = WalkDir::new(repo_path)
             .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| !e.path().to_string_lossy().contains("/.git/"))
-            .filter(|e| !e.path().to_string_lossy().contains("/node_modules/"))
-            .filter(|e| !e.path().to_string_lossy().contains("/target/"))
-        {
+            .filter_entry(|entry| !should_skip_entry(entry.path()));
+
+        for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
             if path.is_file() {
                 if let Ok(content) = std::fs::read_to_string(path) {
@@ -221,6 +223,12 @@ impl ASTAnalyzer {
 
         Ok(all_deps)
     }
+}
+
+fn should_skip_entry(path: &Path) -> bool {
+    path.components().any(|component| {
+        matches!(component, Component::Normal(name) if name == ".git" || name == "node_modules" || name == "target")
+    })
 }
 
 #[cfg(test)]
@@ -238,7 +246,7 @@ mod tests {
         }
         "#;
 
-        let deps = ASTAnalyzer::analyze_rust_file("test.rs", code);
+        let deps = DependencyAnalyzer::analyze_rust_file("test.rs", code);
         assert!(!deps.is_empty());
         assert!(deps.iter().any(|d| d.dep_type == "import"));
         assert!(deps.iter().any(|d| d.dep_type == "type_ref"));
@@ -261,7 +269,7 @@ mod tests {
         }
         "#;
 
-        let deps = ASTAnalyzer::analyze_typescript_file("test.ts", code);
+        let deps = DependencyAnalyzer::analyze_typescript_file("test.ts", code);
         assert!(!deps.is_empty());
         assert!(deps
             .iter()
@@ -284,7 +292,7 @@ mod tests {
                 return data[0] if data else None
         "#;
 
-        let deps = ASTAnalyzer::analyze_python_file("test.py", code);
+        let deps = DependencyAnalyzer::analyze_python_file("test.py", code);
         assert!(!deps.is_empty());
         assert!(deps
             .iter()
@@ -295,7 +303,7 @@ mod tests {
     #[test]
     fn test_confidence_scores() {
         let code = "use std::collections::HashMap;";
-        let deps = ASTAnalyzer::analyze_rust_file("test.rs", code);
+        let deps = DependencyAnalyzer::analyze_rust_file("test.rs", code);
 
         // Explicit imports should have high confidence
         for dep in deps.iter().filter(|d| d.dep_type == "import") {
@@ -309,12 +317,35 @@ mod tests {
         let ts_code = "import React from 'react';";
         let py_code = "import os";
 
-        let rust_deps = ASTAnalyzer::analyze_file(Path::new("test.rs"), rust_code).unwrap();
-        let ts_deps = ASTAnalyzer::analyze_file(Path::new("test.ts"), ts_code).unwrap();
-        let py_deps = ASTAnalyzer::analyze_file(Path::new("test.py"), py_code).unwrap();
+        let rust_deps = DependencyAnalyzer::analyze_file(Path::new("test.rs"), rust_code).unwrap();
+        let ts_deps = DependencyAnalyzer::analyze_file(Path::new("test.ts"), ts_code).unwrap();
+        let py_deps = DependencyAnalyzer::analyze_file(Path::new("test.py"), py_code).unwrap();
 
         assert!(!rust_deps.is_empty());
         assert!(!ts_deps.is_empty());
         assert!(!py_deps.is_empty());
+    }
+
+    #[test]
+    fn test_analyze_all_files_skips_git_directories() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "idud-ast-analyzer-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(temp_dir.join(".git").join("objects")).unwrap();
+        std::fs::write(
+            temp_dir.join(".git").join("config"),
+            "[core]\n	repositoryformatversion = 0\n",
+        )
+        .unwrap();
+
+        let deps = DependencyAnalyzer::analyze_all_files(&temp_dir).unwrap();
+        assert!(deps.is_empty());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

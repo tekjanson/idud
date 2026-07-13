@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
-use tokio::{process::Command, time::timeout};
+use tokio::{io::AsyncWriteExt, process::Command, time::timeout};
 use tracing::{debug, info, warn};
 
 /// Configuration for AI linking behavior.
@@ -112,9 +112,9 @@ impl CopilotClient for TokioCopilotClient {
         prompt: &str,
         timeout_duration: Duration,
     ) -> Result<String, AiLinkerError> {
-        let child = Command::new("copilot")
+        let mut child = Command::new("copilot")
             .arg("-p")
-            .arg(prompt)
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -122,6 +122,18 @@ impl CopilotClient for TokioCopilotClient {
             .map_err(|err| {
                 AiLinkerError::InvocationFailed(format!("failed to spawn copilot process: {err}"))
             })?;
+
+        let stdin = child.stdin.as_mut().ok_or_else(|| {
+            AiLinkerError::InvocationFailed("copilot stdin pipe was unavailable".to_string())
+        })?;
+        stdin.write_all(prompt.as_bytes()).await.map_err(|err| {
+            AiLinkerError::InvocationFailed(format!(
+                "failed to write prompt to copilot stdin: {err}"
+            ))
+        })?;
+        stdin.shutdown().await.map_err(|err| {
+            AiLinkerError::InvocationFailed(format!("failed to close copilot stdin: {err}"))
+        })?;
 
         match timeout(timeout_duration, child.wait_with_output()).await {
             Ok(Ok(output)) => {

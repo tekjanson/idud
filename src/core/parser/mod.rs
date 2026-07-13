@@ -91,11 +91,11 @@ impl TreeSitterParser {
 
     #[allow(clippy::only_used_in_recursion)]
     fn hash_node(&self, node: &Node, source: &str, parent_digest: Option<&str>) -> Result<String> {
-        let mut pieces = Vec::new();
-        pieces.push(node.kind().to_string());
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(node.kind().as_bytes());
 
         if let Some(parent_digest) = parent_digest {
-            pieces.push(parent_digest.to_string());
+            hasher.update(parent_digest.as_bytes());
         }
 
         let mut cursor = node.walk();
@@ -104,23 +104,19 @@ impl TreeSitterParser {
                 continue;
             }
 
-            let child_digest = self.hash_node(&child, source, Some(&pieces.join("::")))?;
-            pieces.push(child_digest);
+            let child_parent_digest = hasher.clone().finalize().to_hex().to_string();
+            let child_digest = self.hash_node(&child, source, Some(&child_parent_digest))?;
+            hasher.update(child_digest.as_bytes());
         }
 
         if node.child_count() == 0 {
-            let trimmed = node
-                .utf8_text(source.as_bytes())
-                .unwrap_or_default()
-                .trim()
-                .to_string();
+            let trimmed = node.utf8_text(source.as_bytes()).unwrap_or_default().trim();
             if !trimmed.is_empty() {
-                pieces.push(trimmed);
+                hasher.update(trimmed.as_bytes());
             }
         }
 
-        let seed = pieces.join("::");
-        Ok(blake3::hash(seed.as_bytes()).to_hex().to_string())
+        Ok(hasher.finalize().to_hex().to_string())
     }
 }
 

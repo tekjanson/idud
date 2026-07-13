@@ -11,7 +11,7 @@ pub mod types;
 pub mod ui;
 pub mod web_server;
 
-pub use analysis::{AILinker, AILinkerConfig, ASTAnalyzer, Dependency};
+pub use analysis::{AILinker, AILinkerConfig, ASTAnalyzer, Dependency, DependencyAnalyzer};
 pub use cli::{run as run_cli, Cli, CliCommand};
 pub use contract_ledger::ContractLedger;
 pub use core::{
