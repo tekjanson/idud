@@ -4,7 +4,7 @@
 //! in the root directory so the codebase remains easy to navigate. They also enforce
 //! a configurable golden-pattern contract for the architecture-critical modules.
 
-use idud_hygiene::{enforce_golden_pattern, render_hygiene_dashboard};
+use idud_hygiene::{enforce_golden_pattern, render_hygiene_dashboard, report_golden_manifests};
 use std::{collections::BTreeSet, fs, path::Path};
 
 #[test]
@@ -75,6 +75,20 @@ fn renders_html_hygiene_dashboard() {
     assert!(dashboard.contains("<title>idud hygiene dashboard</title>"));
     assert!(dashboard.contains("Local-first architecture hygiene"));
     assert!(dashboard.contains("Manifest"));
+    assert!(dashboard.contains("Keep every module small enough to reason about in one sitting."));
+}
+
+#[test]
+fn report_output_serializes_to_json() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifests = report_golden_manifests(
+        manifest_dir,
+        manifest_dir.join("crates/idud-hygiene/golden_patterns"),
+    )
+    .expect("report generation should succeed");
+
+    let json = serde_json::to_string(&manifests).expect("reports should serialize to JSON");
+    assert!(json.contains("\"name\":"));
 }
 
 #[test]

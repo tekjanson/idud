@@ -1,0 +1,17 @@
+{
+  "name": "idud-hygiene-self-hygiene",
+  "description": "Keeps the hygiene tool itself maintainable by enforcing small module files.",
+  "rules": [
+    {
+      "id": "idud-hygiene-src-files-max-lines",
+      "kind": "max-file-lines",
+      "max_lines": 200,
+      "include": ["crates/idud-hygiene/src/**/*.rs"],
+      "documentation": {
+        "summary": "Keep every module small enough to reason about in one sitting.",
+        "explanation": "The hygiene crate should stay compact so it remains understandable and easy to evolve.",
+        "visual": "<div class=\"visual-stack\"><div class=\"visual-block\">module</div><div class=\"arrow\">⟶</div><div class=\"visual-block secondary\">200 line budget</div></div>"
+      }
+    }
+  ]
+}

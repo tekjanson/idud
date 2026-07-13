@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use idud_hygiene::{enforce_golden_manifests, render_hygiene_dashboard, report_golden_manifests};
+use serde_json::json;
 use std::{
     env, fs,
+    io::{self, Read},
     path::{Path, PathBuf},
     process::{self, Command},
 };
@@ -51,6 +53,8 @@ fn run() -> Result<()> {
     let mut args = env::args().skip(1);
     let mut report = false;
     let mut html = false;
+    let mut json_output = false;
+    let mut manifest_stdin = false;
     let mut should_open_in_browser = false;
     let mut output_path = None;
     let mut repo_root = None;
@@ -60,6 +64,8 @@ fn run() -> Result<()> {
         match arg.as_str() {
             "--report" | "-report" => report = true,
             "--html" | "-html" => html = true,
+            "--json" | "-json" => json_output = true,
+            "--manifest-stdin" => manifest_stdin = true,
             "--open" | "-open" => should_open_in_browser = true,
             "--output" | "-output" | "-o" => {
                 let Some(path) = args.next() else {
@@ -69,14 +75,14 @@ fn run() -> Result<()> {
             }
             _ if arg.starts_with('-') => {
                 return Err(anyhow::anyhow!(
-                    "unexpected argument {arg}; usage: idud-hygiene [--report|--html] [--open] [--output PATH] <repo-root> [manifest-path]"
+                    "unexpected argument {arg}; usage: idud-hygiene [--report|--html] [--json] [--manifest-stdin] [--open] [--output PATH] <repo-root> [manifest-path]"
                 ))
             }
             _ if repo_root.is_none() => repo_root = Some(arg),
             _ if manifest_path.is_none() => manifest_path = Some(arg),
             _ => {
                 return Err(anyhow::anyhow!(
-                    "unexpected argument {arg}; usage: idud-hygiene [--report|--html] [--open] [--output PATH] <repo-root> [manifest-path]"
+                    "unexpected argument {arg}; usage: idud-hygiene [--report|--html] [--json] [--manifest-stdin] [--open] [--output PATH] <repo-root> [manifest-path]"
                 ))
             }
         }
@@ -85,11 +91,24 @@ fn run() -> Result<()> {
     if report && html {
         return Err(anyhow::anyhow!("choose either --report or --html"));
     }
+    if html && json_output {
+        return Err(anyhow::anyhow!("choose either --html or --json"));
+    }
 
     let repo_root =
-        repo_root.context("usage: idud-hygiene [--report|--html] [--open] [--output PATH] <repo-root> [manifest-path]")?;
-    let manifest_path =
-        manifest_path.unwrap_or_else(|| "crates/idud-hygiene/golden_patterns".to_string());
+        repo_root.context("usage: idud-hygiene [--report|--html] [--json] [--manifest-stdin] [--open] [--output PATH] <repo-root> [manifest-path]")?;
+    let manifest_path = if manifest_stdin {
+        let mut manifest_content = String::new();
+        io::stdin()
+            .read_to_string(&mut manifest_content)
+            .context("failed to read manifest JSON from stdin")?;
+        let temp_path = env::temp_dir().join(format!("idud-hygiene-manifest-{}.json", process::id()));
+        fs::write(&temp_path, manifest_content)
+            .with_context(|| format!("failed to write stdin manifest to {}", temp_path.display()))?;
+        temp_path.to_string_lossy().to_string()
+    } else {
+        manifest_path.unwrap_or_else(|| "crates/idud-hygiene/golden_patterns".to_string())
+    };
 
     if html {
         let dashboard = render_hygiene_dashboard(&repo_root, &manifest_path)?;
@@ -114,6 +133,10 @@ fn run() -> Result<()> {
 
     if report {
         let manifests = report_golden_manifests(&repo_root, &manifest_path)?;
+        if json_output {
+            println!("{}", serde_json::to_string_pretty(&manifests)?);
+            return Ok(());
+        }
         for manifest in manifests {
             println!(
                 "[{}] {} ({})",
@@ -133,7 +156,20 @@ fn run() -> Result<()> {
     }
 
     let violations = enforce_golden_manifests(&repo_root, &manifest_path)?;
-    if violations.is_empty() {
+    if json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "passed": violations.is_empty(),
+                "violations": violations
+            }))?
+        );
+        if violations.is_empty() {
+            Ok(())
+        } else {
+            process::exit(1);
+        }
+    } else if violations.is_empty() {
         println!("No hygiene violations found.");
         Ok(())
     } else {
