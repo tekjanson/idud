@@ -28,8 +28,10 @@ fn run() -> Result<()> {
         }
     }
 
-    let repo_root = repo_root.context("usage: idud-hygiene [--report] <repo-root> [manifest-path]")?;
-    let manifest_path = manifest_path.unwrap_or_else(|| "golden_patterns/architecture_hygiene.json".to_string());
+    let repo_root =
+        repo_root.context("usage: idud-hygiene [--report] <repo-root> [manifest-path]")?;
+    let manifest_path =
+        manifest_path.unwrap_or_else(|| "golden_patterns/architecture_hygiene.json".to_string());
 
     if report {
         let reports = report_golden_pattern(&repo_root, &manifest_path)?;

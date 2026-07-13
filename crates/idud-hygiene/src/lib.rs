@@ -461,9 +461,7 @@ fn collect_rule_violations(
             let node_ids: std::collections::HashSet<&str> =
                 nodes.iter().map(|node| node.id.as_str()).collect();
             for edge in edges {
-                if !node_ids.contains(edge.from.as_str())
-                    || !node_ids.contains(edge.to.as_str())
-                {
+                if !node_ids.contains(edge.from.as_str()) || !node_ids.contains(edge.to.as_str()) {
                     return Err(anyhow::anyhow!(
                         "call-graph rule {id} references unknown nodes {} -> {}",
                         edge.from,
