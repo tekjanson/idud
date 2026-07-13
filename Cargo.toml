@@ -23,6 +23,10 @@ petgraph = { version = "0.6", features = ["serde-1"] }
 rayon = "1.8"
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
+tree-sitter = "0.25"
+tree-sitter-rust = "0.24.2"
+rusqlite = { version = "0.33", features = ["bundled"] }
+blake3 = "1.5"
 leptos = { version = "0.5", features = ["csr"] }
 leptos_meta = "0.5"
 leptos_router = "0.5"

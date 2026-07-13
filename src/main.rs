@@ -7,7 +7,7 @@ use idud::{
     ContractLedger, RepositoryIngestionConfig, RepositoryTraverser, serve, WebServerConfig,
     discover_training_repos, TrainingOrchestrator, TrainingConfig, TrainingCache,
     RepositoryIngestionOrchestrator, RepoIngestionConfig,
-    Signatory, Contract,
+    Signatory, Contract, write_synthetic_understanding,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -136,6 +136,17 @@ enum Commands {
         /// Skip already-ingested repos (default: true)
         #[arg(short, long)]
         skip_ingested: bool,
+    },
+
+    /// Generate a synthetic understanding artifact for a repository
+    WaymarkUnderstand {
+        /// Repository path to analyze
+        #[arg(long, default_value = "/home/tekjanson/Documents/Code/Waymark")]
+        repo_path: PathBuf,
+
+        /// Output JSON path for the synthetic understanding artifact
+        #[arg(long, default_value = "data/waymark_synthetic_understanding.json")]
+        output: PathBuf,
     },
 }
 
@@ -465,6 +476,13 @@ async fn main() -> anyhow::Result<()> {
                     return Err(e.into());
                 }
             }
+        }
+
+        Commands::WaymarkUnderstand { repo_path, output } => {
+            println!("🧠 Generating synthetic understanding for {}", repo_path.display());
+            let json_path = write_synthetic_understanding(&repo_path, &output)?;
+            println!("✅ Wrote synthetic understanding to {}", json_path.display());
+            println!("📝 Markdown summary: {}", output.with_extension("md").display());
         }
     }
 
