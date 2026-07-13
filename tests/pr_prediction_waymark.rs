@@ -7,21 +7,23 @@
 //! 4. Validates accuracy metrics
 //! 5. Measures performance characteristics
 
-use idud::training::{load_waymark_contracts, ValidationEngine, PredictionTestCase, ValidationSummary};
+use idud::training::{
+    load_waymark_contracts, PredictionTestCase, ValidationEngine, ValidationSummary,
+};
 use std::time::Instant;
 
 #[test]
 #[ignore] // Run with: cargo test --test pr_prediction_waymark -- --ignored --nocapture
 fn test_pr_prediction_waymark() {
     let waymark_path = "/home/tekjanson/Documents/Code/idud/data/Waymark-contracts.json";
-    
+
     // Step 1: Load Waymark data
     println!("\n=== Step 1: Loading Waymark Contracts ===");
     let start = Instant::now();
-    let waymark_data = load_waymark_contracts(waymark_path)
-        .expect("Failed to load Waymark contracts");
+    let waymark_data =
+        load_waymark_contracts(waymark_path).expect("Failed to load Waymark contracts");
     let load_time = start.elapsed();
-    
+
     println!("✓ Loaded {} signatories", waymark_data.signatories.len());
     println!("✓ Loaded {} contracts", waymark_data.contracts.len());
     println!("✓ Time: {:?}", load_time);
@@ -31,9 +33,12 @@ fn test_pr_prediction_waymark() {
     let start = Instant::now();
     let engine = ValidationEngine::from_waymark(waymark_data);
     let graph_build_time = start.elapsed();
-    
+
     let (signatories, contracts) = engine.graph_stats();
-    println!("✓ Graph built with {} signatories and {} contracts", signatories, contracts);
+    println!(
+        "✓ Graph built with {} signatories and {} contracts",
+        signatories, contracts
+    );
     println!("✓ Time: {:?}", graph_build_time);
 
     // Step 3: Analyze graph structure
@@ -55,77 +60,109 @@ fn test_pr_prediction_waymark() {
     for (idx, result) in results.iter().enumerate() {
         println!("\n[Test {}] {}", idx + 1, result.test_name);
         println!("  Input: {:?}", result.changed_files);
-        println!("  Predictions: {} files in {}ms", 
-            result.predicted_files.len(), result.compute_time_ms);
+        println!(
+            "  Predictions: {} files in {}ms",
+            result.predicted_files.len(),
+            result.compute_time_ms
+        );
         println!("  Expected: {} files", result.expected_files.len());
-        
+
         if !result.predicted_files.is_empty() {
             println!("  Top 3 predictions:");
             for (i, file) in result.predicted_files.iter().take(3).enumerate() {
-                let score = result.expected_files.iter()
+                let score = result
+                    .expected_files
+                    .iter()
                     .map(|_| "✓")
                     .nth(0)
                     .unwrap_or("");
                 println!("    {}. {} {}", i + 1, file, score);
             }
         }
-        
+
         println!("  Confusion Matrix:");
-        println!("    TP: {} | FP: {} | FN: {}",
-            result.true_positives, result.false_positives, result.false_negatives);
-        println!("  Metrics: Precision={:.1}% | Recall={:.1}% | F1={:.3}",
-            result.precision * 100.0, result.recall * 100.0, result.f1_score);
-        println!("  Status: {}", if result.passed { "✓ PASS" } else { "✗ FAIL" });
+        println!(
+            "    TP: {} | FP: {} | FN: {}",
+            result.true_positives, result.false_positives, result.false_negatives
+        );
+        println!(
+            "  Metrics: Precision={:.1}% | Recall={:.1}% | F1={:.3}",
+            result.precision * 100.0,
+            result.recall * 100.0,
+            result.f1_score
+        );
+        println!(
+            "  Status: {}",
+            if result.passed {
+                "✓ PASS"
+            } else {
+                "✗ FAIL"
+            }
+        );
     }
 
     // Step 6: Calculate summary
     println!("\n=== Step 6: Validation Summary ===");
     let summary = ValidationSummary::from_results(&results, signatories, contracts);
-    
-    println!("Passed: {}/{} tests ({:.1}%)", 
+
+    println!(
+        "Passed: {}/{} tests ({:.1}%)",
         summary.passed_tests,
         summary.total_tests,
         summary.accuracy * 100.0
     );
-    
+
     println!("\nAggregate Metrics:");
     println!("  Precision: {:.1}%", summary.average_precision * 100.0);
     println!("  Recall:    {:.1}%", summary.average_recall * 100.0);
     println!("  F1 Score:  {:.4}", summary.average_f1);
-    
+
     println!("\nPerformance:");
-    println!("  Avg time per prediction: {}ms", summary.average_compute_time_ms);
-    println!("  Total time: {:?}", load_time + graph_build_time + prediction_time);
+    println!(
+        "  Avg time per prediction: {}ms",
+        summary.average_compute_time_ms
+    );
+    println!(
+        "  Total time: {:?}",
+        load_time + graph_build_time + prediction_time
+    );
 
     // Step 7: Validate success criteria
     println!("\n=== Step 7: Validating Success Criteria ===");
-    
+
     assert!(summary.total_tests > 0, "Should have run at least one test");
     println!("✓ Ran {} tests", summary.total_tests);
-    
+
     if summary.average_precision > 0.5 {
-        println!("✓ Average precision {:.1}% > 50%", summary.average_precision * 100.0);
+        println!(
+            "✓ Average precision {:.1}% > 50%",
+            summary.average_precision * 100.0
+        );
     }
-    
+
     if summary.average_f1 > 0.4 {
         println!("✓ Average F1 score {:.4} > 0.4", summary.average_f1);
     }
-    
+
     // Ensure all computations are fast (should be <100ms per prediction for in-memory graph)
     if summary.average_compute_time_ms < 100 {
-        println!("✓ Fast computation: {}ms per prediction (expected <100ms)", 
-            summary.average_compute_time_ms);
+        println!(
+            "✓ Fast computation: {}ms per prediction (expected <100ms)",
+            summary.average_compute_time_ms
+        );
     } else {
-        println!("⚠ Computation slower than expected: {}ms per prediction", 
-            summary.average_compute_time_ms);
+        println!(
+            "⚠ Computation slower than expected: {}ms per prediction",
+            summary.average_compute_time_ms
+        );
     }
 
     println!("\n=== VALIDATION COMPLETE ===");
 }
 
 fn analyze_graph(waymark_path: &str) {
-    use std::fs;
     use std::collections::HashMap;
+    use std::fs;
 
     let content = fs::read_to_string(waymark_path).expect("Failed to read file");
     let data: serde_json::Value = serde_json::from_str(&content).expect("Failed to parse JSON");
@@ -138,9 +175,7 @@ fn analyze_graph(waymark_path: &str) {
     let mut source_uri_patterns = HashMap::new();
 
     for contract in contracts {
-        let clause_type = contract["clause_type"]
-            .as_str()
-            .unwrap_or("Unknown");
+        let clause_type = contract["clause_type"].as_str().unwrap_or("Unknown");
         *clause_types.entry(clause_type).or_insert(0) += 1;
     }
 
@@ -165,7 +200,7 @@ fn analyze_graph(waymark_path: &str) {
     for contract in contracts {
         let principal = contract["principal_id"].as_str().unwrap_or("");
         let guarantor = contract["guarantor_id"].as_str().unwrap_or("");
-        
+
         *file_connections.entry(principal).or_insert(0) += 1;
         *file_connections.entry(guarantor).or_insert(0) += 1;
     }
@@ -175,15 +210,13 @@ fn analyze_graph(waymark_path: &str) {
 
     println!("\nMost connected files:");
     for (id, count) in connections.iter().take(3) {
-        let uri = signatories
-            .iter()
-            .find_map(|sig| {
-                if sig["id"].as_str() == Some(id) {
-                    sig["source_uri"].as_str()
-                } else {
-                    None
-                }
-            });
+        let uri = signatories.iter().find_map(|sig| {
+            if sig["id"].as_str() == Some(id) {
+                sig["source_uri"].as_str()
+            } else {
+                None
+            }
+        });
         if let Some(uri) = uri {
             println!("  - {} ({} connections)", uri, count);
         }

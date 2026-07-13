@@ -95,7 +95,9 @@ pub struct GraphEdge {
 }
 
 /// Build a synthetic understanding artifact for a local repository.
-pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<SyntheticUnderstanding> {
+pub fn build_synthetic_understanding(
+    repo_path: impl AsRef<Path>,
+) -> Result<SyntheticUnderstanding> {
     let repo_path = repo_path.as_ref();
     let repo_name = repo_path
         .file_name()
@@ -108,10 +110,10 @@ pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<Synt
             }
         })
         .or_else(|| {
-            repo_path
-                .canonicalize()
-                .ok()
-                .and_then(|path| path.file_name().map(|name| name.to_string_lossy().to_string()))
+            repo_path.canonicalize().ok().and_then(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+            })
         })
         .unwrap_or_else(|| "repository".to_string());
 
@@ -128,8 +130,9 @@ pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<Synt
     let mut node_ids: HashSet<String> = HashSet::new();
     let mut file_node_ids: HashMap<String, String> = HashMap::new();
 
-    let import_regex = Regex::new(r#"(?:import|export|require)\s+(?:[\w*{}\s,]+from\s+)?['\"]([^'\"]+)['\"]"#)
-        .context("failed to compile import regex")?;
+    let import_regex =
+        Regex::new(r#"(?:import|export|require)\s+(?:[\w*{}\s,]+from\s+)?['\"]([^'\"]+)['\"]"#)
+            .context("failed to compile import regex")?;
 
     let (contract_nodes, contract_edges) = load_contract_graph(repo_path);
     for node in contract_nodes {
@@ -146,20 +149,24 @@ pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<Synt
         .filter(|entry| entry.file_type().is_file())
     {
         let path = entry.path();
-        let relative = path.strip_prefix(repo_path).unwrap_or(path).to_string_lossy().to_string();
+        let relative = path
+            .strip_prefix(repo_path)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
 
         if should_skip(&relative) {
             continue;
         }
 
-        let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("noext").to_lowercase();
+        let extension = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("noext")
+            .to_lowercase();
         *extension_counts.entry(extension.clone()).or_insert(0) += 1;
 
-        let top_level = relative
-            .split('/')
-            .next()
-            .unwrap_or("<root>")
-            .to_string();
+        let top_level = relative.split('/').next().unwrap_or("<root>").to_string();
         *directory_counts.entry(top_level.clone()).or_insert(0) += 1;
         *directory_extensions
             .entry(top_level.clone())
@@ -178,15 +185,15 @@ pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<Synt
         } else {
             format!("file:{}", relative)
         };
-        let label = relative
-            .split('/')
-            .last()
-            .unwrap_or(&relative)
-            .to_string();
+        let label = relative.split('/').last().unwrap_or(&relative).to_string();
         let node = GraphNode {
             id: node_id.clone(),
             label: label.clone(),
-            kind: if is_test { "test".to_string() } else { "file".to_string() },
+            kind: if is_test {
+                "test".to_string()
+            } else {
+                "file".to_string()
+            },
             path: Some(relative.clone()),
             hash: None,
             group: group_for_path(&relative),
@@ -246,7 +253,9 @@ pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<Synt
                         });
                     }
 
-                    if let Some(target_path) = resolve_import_target(repo_path, &relative, module.as_str()) {
+                    if let Some(target_path) =
+                        resolve_import_target(repo_path, &relative, module.as_str())
+                    {
                         let target_node_id = file_node_ids
                             .entry(target_path.clone())
                             .or_insert_with(|| {
@@ -292,11 +301,14 @@ pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<Synt
         let journey_tags = infer_journey_tags(&relative, &content);
 
         for journey in &journey_tags {
-            let candidate = journey_map.entry(journey.clone()).or_insert_with(|| JourneyCandidate {
-                name: journey.clone(),
-                evidence: Vec::new(),
-                related_files: Vec::new(),
-            });
+            let candidate =
+                journey_map
+                    .entry(journey.clone())
+                    .or_insert_with(|| JourneyCandidate {
+                        name: journey.clone(),
+                        evidence: Vec::new(),
+                        related_files: Vec::new(),
+                    });
             if !candidate.evidence.contains(&relative) {
                 candidate.evidence.push(relative.clone());
             }
@@ -314,7 +326,10 @@ pub fn build_synthetic_understanding(repo_path: impl AsRef<Path>) -> Result<Synt
             linked_files: linked_files.clone(),
         });
 
-        let test_node_id = file_node_ids.get(&relative).cloned().unwrap_or_else(|| format!("test:{}", relative));
+        let test_node_id = file_node_ids
+            .get(&relative)
+            .cloned()
+            .unwrap_or_else(|| format!("test:{}", relative));
         for linked_file in linked_files {
             let dependency = (relative.clone(), linked_file.clone());
             if seen_dependencies.insert(dependency) {
@@ -440,7 +455,12 @@ fn should_skip(relative_path: &str) -> bool {
 fn is_code_file(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| matches!(ext, "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "py" | "rs"))
+        .map(|ext| {
+            matches!(
+                ext,
+                "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "py" | "rs"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -481,26 +501,54 @@ fn extension_counts_for_directory(
         .unwrap_or_default()
 }
 
-fn infer_domains(top_level_directories: &[DirectorySummary], extensions: &[ExtensionSummary]) -> Vec<String> {
+fn infer_domains(
+    top_level_directories: &[DirectorySummary],
+    extensions: &[ExtensionSummary],
+) -> Vec<String> {
     let mut inferred = Vec::new();
-    let lower_names = top_level_directories.iter().map(|d| d.name.to_lowercase()).collect::<Vec<_>>();
+    let lower_names = top_level_directories
+        .iter()
+        .map(|d| d.name.to_lowercase())
+        .collect::<Vec<_>>();
 
-    if lower_names.iter().any(|name| name.contains("mobile") || name.contains("android") || name.contains("ios")) {
+    if lower_names
+        .iter()
+        .any(|name| name.contains("mobile") || name.contains("android") || name.contains("ios"))
+    {
         inferred.push("mobile application surfaces".to_string());
     }
-    if lower_names.iter().any(|name| name.contains("worker") || name.contains("service") || name.contains("server")) {
+    if lower_names
+        .iter()
+        .any(|name| name.contains("worker") || name.contains("service") || name.contains("server"))
+    {
         inferred.push("backend service workflows".to_string());
     }
-    if lower_names.iter().any(|name| name.contains("docs") || name.contains("guide") || name.contains("agent")) {
+    if lower_names
+        .iter()
+        .any(|name| name.contains("docs") || name.contains("guide") || name.contains("agent"))
+    {
         inferred.push("documentation and operating workflows".to_string());
     }
-    if lower_names.iter().any(|name| name.contains("infra") || name.contains("terraform") || name.contains("docker") || name.contains("deploy")) {
+    if lower_names.iter().any(|name| {
+        name.contains("infra")
+            || name.contains("terraform")
+            || name.contains("docker")
+            || name.contains("deploy")
+    }) {
         inferred.push("infrastructure and deployment".to_string());
     }
-    if lower_names.iter().any(|name| name.contains("test") || name.contains("spec") || name.contains("e2e")) {
+    if lower_names
+        .iter()
+        .any(|name| name.contains("test") || name.contains("spec") || name.contains("e2e"))
+    {
         inferred.push("quality assurance and regression coverage".to_string());
     }
-    if extensions.iter().any(|ext| matches!(ext.extension.as_str(), "ts" | "tsx" | "js" | "jsx" | "py" | "rs")) {
+    if extensions.iter().any(|ext| {
+        matches!(
+            ext.extension.as_str(),
+            "ts" | "tsx" | "js" | "jsx" | "py" | "rs"
+        )
+    }) {
         inferred.push("application logic and integrations".to_string());
     }
     inferred
@@ -539,7 +587,10 @@ fn render_brief(
     let mut lines = vec![format!("Synthetic understanding for {repo_name}:")];
     lines.push("- Primary areas:".to_string());
     for directory in directories.iter().take(6) {
-        lines.push(format!("  - {}: {} files", directory.name, directory.file_count));
+        lines.push(format!(
+            "  - {}: {} files",
+            directory.name, directory.file_count
+        ));
     }
     if !domains.is_empty() {
         lines.push("- Inferred domains:".to_string());
@@ -550,13 +601,20 @@ fn render_brief(
     if !journey_candidates.is_empty() {
         lines.push("- Customer journeys:".to_string());
         for journey in journey_candidates.iter().take(6) {
-            lines.push(format!("  - {} (evidence: {})", journey.name, journey.evidence.len()));
+            lines.push(format!(
+                "  - {} (evidence: {})",
+                journey.name,
+                journey.evidence.len()
+            ));
         }
     }
     if !test_inventory.is_empty() {
         lines.push("- Test inventory:".to_string());
         for test in test_inventory.iter().take(6) {
-            lines.push(format!("  - {} [{}] -> {}", test.title, test.kind, test.path));
+            lines.push(format!(
+                "  - {} [{}] -> {}",
+                test.title, test.kind, test.path
+            ));
         }
     }
     if !dependency_hints.is_empty() {
@@ -586,7 +644,10 @@ fn render_markdown(understanding: &SyntheticUnderstanding) -> String {
             lines.push(format!("- {}", journey.name));
             lines.push(format!("  - Evidence: {}", journey.evidence.join(", ")));
             if !journey.related_files.is_empty() {
-                lines.push(format!("  - Related files: {}", journey.related_files.join(", ")));
+                lines.push(format!(
+                    "  - Related files: {}",
+                    journey.related_files.join(", ")
+                ));
             }
         }
     }
@@ -600,7 +661,10 @@ fn render_markdown(understanding: &SyntheticUnderstanding) -> String {
             lines.push(format!("- {} [{}]", test.title, test.kind));
             lines.push(format!("  - Path: {}", test.path));
             if !test.linked_files.is_empty() {
-                lines.push(format!("  - Linked files: {}", test.linked_files.join(", ")));
+                lines.push(format!(
+                    "  - Linked files: {}",
+                    test.linked_files.join(", ")
+                ));
             }
         }
     }
@@ -608,7 +672,10 @@ fn render_markdown(understanding: &SyntheticUnderstanding) -> String {
     lines.push(String::new());
     lines.push("## Top-level directories".to_string());
     for directory in &understanding.top_level_directories {
-        lines.push(format!("- {}: {} files", directory.name, directory.file_count));
+        lines.push(format!(
+            "- {}: {} files",
+            directory.name, directory.file_count
+        ));
     }
 
     lines.push(String::new());
@@ -717,14 +784,23 @@ fn render_html(understanding: &SyntheticUnderstanding) -> String {
             "hash" => 3,
             _ => 4,
         };
-        rank(&a.kind).cmp(&rank(&b.kind)).then_with(|| a.label.cmp(&b.label))
+        rank(&a.kind)
+            .cmp(&rank(&b.kind))
+            .then_with(|| a.label.cmp(&b.label))
     });
 
-    let columns = if ordered_nodes.len() > 16 { 4 } else if ordered_nodes.len() > 8 { 3 } else { 2 };
+    let columns = if ordered_nodes.len() > 16 {
+        4
+    } else if ordered_nodes.len() > 8 {
+        3
+    } else {
+        2
+    };
     let node_width = 170;
     let node_height = 92;
     let svg_width = 40 + columns * node_width + 20;
-    let svg_height = 40 + ((ordered_nodes.len() as f32 / columns as f32).ceil() as usize) * node_height + 20;
+    let svg_height =
+        40 + ((ordered_nodes.len() as f32 / columns as f32).ceil() as usize) * node_height + 20;
 
     let mut node_positions: HashMap<String, (usize, usize)> = HashMap::new();
     let mut node_svg = String::new();
@@ -892,10 +968,22 @@ fn render_html(understanding: &SyntheticUnderstanding) -> String {
         escape_html(&understanding.repository),
         escape_html(&understanding.generated_at),
         escape_html(&understanding.summary),
-        understanding.graph_nodes.iter().filter(|node| node.kind == "contract").count(),
+        understanding
+            .graph_nodes
+            .iter()
+            .filter(|node| node.kind == "contract")
+            .count(),
         understanding.test_inventory.len(),
-        understanding.graph_nodes.iter().filter(|node| node.kind == "file").count(),
-        understanding.graph_nodes.iter().filter(|node| node.kind == "hash").count()
+        understanding
+            .graph_nodes
+            .iter()
+            .filter(|node| node.kind == "file")
+            .count(),
+        understanding
+            .graph_nodes
+            .iter()
+            .filter(|node| node.kind == "hash")
+            .count()
     )
 }
 
@@ -915,8 +1003,16 @@ fn load_contract_graph(repo_path: &Path) -> (Vec<GraphNode>, Vec<GraphEdge>) {
             let path = entry.path();
             if path.is_file()
                 && path.extension().and_then(|ext| ext.to_str()) == Some("json")
-                && (path.file_name().and_then(|name| name.to_str()).unwrap_or_default().contains("contracts")
-                    || path.file_name().and_then(|name| name.to_str()).unwrap_or_default().ends_with("-contracts.json"))
+                && (path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default()
+                    .contains("contracts")
+                    || path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or_default()
+                        .ends_with("-contracts.json"))
             {
                 contract_files.push(path);
             }
@@ -957,7 +1053,13 @@ fn load_contract_graph(repo_path: &Path) -> (Vec<GraphNode>, Vec<GraphEdge>) {
                         signatory_obj
                             .get("source_uri")
                             .and_then(|value| value.as_str())
-                            .map(|uri| uri.split('#').next().unwrap_or(uri).trim_start_matches("./blob/main/").to_string())
+                            .map(|uri| {
+                                uri.split('#')
+                                    .next()
+                                    .unwrap_or(uri)
+                                    .trim_start_matches("./blob/main/")
+                                    .to_string()
+                            })
                     });
                 ensure_graph_node(
                     &mut nodes,
@@ -1082,13 +1184,19 @@ fn resolve_import_target(repo_path: &Path, current_relative: &str, module: &str)
 
     for candidate in candidates {
         if candidate.is_file() {
-            return candidate.strip_prefix(repo_path).ok().map(|path| path.to_string_lossy().to_string());
+            return candidate
+                .strip_prefix(repo_path)
+                .ok()
+                .map(|path| path.to_string_lossy().to_string());
         }
         let mut with_extension = candidate.clone();
         for ext in [".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".md"] {
             with_extension.set_extension(ext.trim_start_matches('.'));
             if with_extension.is_file() {
-                return with_extension.strip_prefix(repo_path).ok().map(|path| path.to_string_lossy().to_string());
+                return with_extension
+                    .strip_prefix(repo_path)
+                    .ok()
+                    .map(|path| path.to_string_lossy().to_string());
             }
         }
     }
@@ -1129,7 +1237,20 @@ fn infer_test_title(relative_path: &str, content: &str) -> String {
         .to_lowercase();
     let normalized = stem
         .split(|c: char| c == '.' || c == '_' || c == '-' || c == '/')
-        .filter(|token| !token.is_empty() && !matches!(*token, "test" | "tests" | "spec" | "specs" | "e2e" | "unit" | "integration" | "acceptance"))
+        .filter(|token| {
+            !token.is_empty()
+                && !matches!(
+                    *token,
+                    "test"
+                        | "tests"
+                        | "spec"
+                        | "specs"
+                        | "e2e"
+                        | "unit"
+                        | "integration"
+                        | "acceptance"
+                )
+        })
         .collect::<Vec<_>>()
         .join(" ");
     if normalized.is_empty() {
@@ -1153,7 +1274,11 @@ fn infer_test_kind(relative_path: &str) -> &'static str {
 }
 
 fn infer_journey_tags(relative_path: &str, content: &str) -> Vec<String> {
-    let text = format!("{} {}", relative_path.to_lowercase(), content.to_lowercase());
+    let text = format!(
+        "{} {}",
+        relative_path.to_lowercase(),
+        content.to_lowercase()
+    );
     let mut tags = Vec::new();
     let keyword_map = [
         ("auth", "authentication"),
@@ -1203,7 +1328,10 @@ fn find_related_code_files(relative_path: &str, discovered_code_files: &[String]
 
     for code_file in discovered_code_files {
         let code_tokens = tokenize_path(code_file);
-        let overlap = test_tokens.iter().filter(|token| code_tokens.contains(*token)).count();
+        let overlap = test_tokens
+            .iter()
+            .filter(|token| code_tokens.contains(*token))
+            .count();
         if overlap > 0 {
             related.push(code_file.clone());
         }
@@ -1221,7 +1349,24 @@ fn tokenize_path(path: &str) -> Vec<String> {
         .replace('\\', "/")
         .split(|c: char| c == '/' || c == '.' || c == '_' || c == '-' || c == ' ')
         .filter(|token| !token.is_empty())
-        .filter(|token| !matches!(*token, "src" | "lib" | "app" | "test" | "tests" | "spec" | "specs" | "e2e" | "integration" | "unit" | "index" | "component" | "module"))
+        .filter(|token| {
+            !matches!(
+                *token,
+                "src"
+                    | "lib"
+                    | "app"
+                    | "test"
+                    | "tests"
+                    | "spec"
+                    | "specs"
+                    | "e2e"
+                    | "integration"
+                    | "unit"
+                    | "index"
+                    | "component"
+                    | "module"
+            )
+        })
         .map(|token| token.to_string())
         .collect::<Vec<_>>();
     tokens.sort();
@@ -1254,8 +1399,14 @@ mod tests {
         fs::write(repo.join("docs/readme.md"), "# docs\n").unwrap();
 
         let understanding = build_synthetic_understanding(repo).unwrap();
-        assert_eq!(understanding.repository, repo.file_name().unwrap().to_string_lossy());
+        assert_eq!(
+            understanding.repository,
+            repo.file_name().unwrap().to_string_lossy()
+        );
         assert!(!understanding.summary.is_empty());
-        assert!(understanding.top_level_directories.iter().any(|dir| dir.name == "src"));
+        assert!(understanding
+            .top_level_directories
+            .iter()
+            .any(|dir| dir.name == "src"));
     }
 }

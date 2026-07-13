@@ -1,5 +1,5 @@
 //! Token usage tracking and budgeting for Copilot CLI training
-//! 
+//!
 //! This module tracks token consumption and warns before hitting monthly limits.
 //! Helps ensure training stays within Copilot CLI monthly token budget.
 
@@ -16,7 +16,7 @@ pub struct TokenMeter {
 
 impl TokenMeter {
     /// Create a new token meter with optional monthly budget limit
-    /// 
+    ///
     /// Budget should be set based on Copilot CLI monthly allowance.
     /// Common values:
     /// - 10,000 tokens/month (hobby)
@@ -33,8 +33,10 @@ impl TokenMeter {
 
     /// Record tokens used in a prediction
     pub fn record(&self, input_tokens: u64, output_tokens: u64) {
-        self.total_input_tokens.fetch_add(input_tokens, Ordering::Relaxed);
-        self.total_output_tokens.fetch_add(output_tokens, Ordering::Relaxed);
+        self.total_input_tokens
+            .fetch_add(input_tokens, Ordering::Relaxed);
+        self.total_output_tokens
+            .fetch_add(output_tokens, Ordering::Relaxed);
         self.predictions_made.fetch_add(1, Ordering::Relaxed);
 
         let total = self.total_input_tokens.load(Ordering::Relaxed)
@@ -44,17 +46,22 @@ impl TokenMeter {
         if total > self.monthly_budget / 2 && total <= (self.monthly_budget / 2) + 100 {
             tracing::warn!(
                 "⚠️  Token budget at 50%: {}/{} used",
-                total, self.monthly_budget
+                total,
+                self.monthly_budget
             );
-        } else if total > (self.monthly_budget * 3) / 4 && total <= ((self.monthly_budget * 3) / 4) + 100 {
+        } else if total > (self.monthly_budget * 3) / 4
+            && total <= ((self.monthly_budget * 3) / 4) + 100
+        {
             tracing::warn!(
                 "⚠️  Token budget at 75%: {}/{} used",
-                total, self.monthly_budget
+                total,
+                self.monthly_budget
             );
         } else if total > (self.monthly_budget * 9) / 10 {
             tracing::error!(
                 "🛑 Token budget at 90%: {}/{} used - consider stopping training",
-                total, self.monthly_budget
+                total,
+                self.monthly_budget
             );
         }
     }

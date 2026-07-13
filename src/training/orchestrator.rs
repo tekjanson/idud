@@ -1,5 +1,5 @@
 //! Training loop orchestrator: coordinates the entire validation pipeline
-//! 
+//!
 //! Orchestrates a multi-stage training system that:
 //! 1. INTAKE: Discovers candidate repositories
 //! 2. BATCH: Splits repos into parallel groups
@@ -7,12 +7,10 @@
 //! 4. AGGREGATE: Collects metrics and computes trends
 
 use crate::training::{
-    fetch_issue_and_linked_pr, RepoCandidate, IssueWithPR,
-    PredictionRequest, TrainingCache,
+    fetch_issue_and_linked_pr, IssueWithPR, PredictionRequest, RepoCandidate, TrainingCache,
 };
 use crate::training_datalake::{
-    AggregatedMetrics, PercentileMetrics, TimeWindow,
-    TrainingDataLake, TrainingRun, Checkpoint,
+    AggregatedMetrics, Checkpoint, PercentileMetrics, TimeWindow, TrainingDataLake, TrainingRun,
 };
 use crate::{RepositoryIngestionConfig, RepositoryTraverser};
 use anyhow::Result;
@@ -80,8 +78,8 @@ pub struct TrainingConfig {
     pub batch_size: usize,
     pub max_concurrent_agents: usize,
     pub datalake_path: String,
-    pub max_duration_minutes: Option<u64>,  // Stop after N minutes
-    pub max_repos: Option<usize>,            // Stop after N repos processed
+    pub max_duration_minutes: Option<u64>, // Stop after N minutes
+    pub max_repos: Option<usize>,          // Stop after N repos processed
 }
 
 /// Main orchestrator that drives the training pipeline
@@ -96,20 +94,30 @@ impl TrainingOrchestrator {
         let datalake = Arc::new(TrainingDataLake::new(&config.datalake_path)?);
         let cache_path = format!("{}/training_cache.json", config.datalake_path);
         let cache = Arc::new(TrainingCache::new(&cache_path)?);
-        Ok(Self { config, datalake, cache })
+        Ok(Self {
+            config,
+            datalake,
+            cache,
+        })
     }
 
     /// Run the complete training loop (idempotent: skips already-processed repos/issues)
     pub async fn run_training_loop(&self, repos: Vec<RepoCandidate>) -> Result<TrainingResults> {
         let run_id = Uuid::new_v4().to_string();
         let started_at = Utc::now();
-        let deadline = self.config.max_duration_minutes
+        let deadline = self
+            .config
+            .max_duration_minutes
             .map(|mins| started_at + Duration::minutes(mins as i64));
 
         // Get cache stats for logging
         let cache_stats = self.cache.get_stats();
-        tracing::info!("📦 Cache status: {} processed (completed: {}, unique repos: {})",
-                      cache_stats.total_processed, cache_stats.completed, cache_stats.unique_repos);
+        tracing::info!(
+            "📦 Cache status: {} processed (completed: {}, unique repos: {})",
+            cache_stats.total_processed,
+            cache_stats.completed,
+            cache_stats.unique_repos
+        );
 
         tracing::info!("🚀 Starting training run: {}", run_id);
         if let Some(mins) = self.config.max_duration_minutes {
@@ -118,8 +126,11 @@ impl TrainingOrchestrator {
         if let Some(max) = self.config.max_repos {
             tracing::info!("📊 Repo limit: {} repos", max);
         }
-        tracing::info!("Processing up to {} repos with {} concurrent agents", 
-                      repos.len(), self.config.max_concurrent_agents);
+        tracing::info!(
+            "Processing up to {} repos with {} concurrent agents",
+            repos.len(),
+            self.config.max_concurrent_agents
+        );
 
         // Step 1: BATCH repos into parallel groups
         let batches = batch_training_jobs(repos, self.config.batch_size)?;
@@ -147,8 +158,12 @@ impl TrainingOrchestrator {
                 }
             }
 
-            tracing::info!("Processing batch {}/{} with {} repos", 
-                          batch_idx + 1, batches.len(), batch.repos.len());
+            tracing::info!(
+                "Processing batch {}/{} with {} repos",
+                batch_idx + 1,
+                batches.len(),
+                batch.repos.len()
+            );
 
             let batch_results = self.process_batch(batch, &run_id).await?;
             repos_processed += batch_results.0.len();
@@ -177,8 +192,11 @@ impl TrainingOrchestrator {
         }
 
         tracing::info!("✅ Training run completed: {}", results.run_id);
-        tracing::info!("📊 Processed {} repos, {} predictions", 
-                      results.total_repos_processed, results.total_predictions);
+        tracing::info!(
+            "📊 Processed {} repos, {} predictions",
+            results.total_repos_processed,
+            results.total_predictions
+        );
 
         Ok(results)
     }
@@ -239,18 +257,25 @@ impl TrainingOrchestrator {
 
         // Step 1: Ingest repository and build dependency graph
         let (signatories, contracts) = Self::ingest_repo(&repo.url).await?;
-        tracing::debug!("Ingested {} signatories, {} contracts", 
-                       signatories.len(), contracts.len());
+        tracing::debug!(
+            "Ingested {} signatories, {} contracts",
+            signatories.len(),
+            contracts.len()
+        );
 
         // Step 2: Select 1-3 recent issues for validation
         let mut issues = Self::select_recent_issues(&repo, 1..=3).await?;
-        
+
         // Step 2b: Filter out already-processed issues
         let initial_count = issues.len();
         issues.retain(|issue| !cache.is_processed(&repo.url, issue.issue_number));
-        
+
         if issues.is_empty() {
-            tracing::info!("✓ All {} issues already processed for {}", initial_count, repo.name);
+            tracing::info!(
+                "✓ All {} issues already processed for {}",
+                initial_count,
+                repo.name
+            );
             return Ok((
                 RepoTrainingMetrics {
                     repo_url: repo.url.clone(),
@@ -267,9 +292,13 @@ impl TrainingOrchestrator {
                 vec![],
             ));
         }
-        
-        tracing::info!("Processing {} new issues for repo {} ({} already cached)",
-                      issues.len(), repo.name, initial_count - issues.len());
+
+        tracing::info!(
+            "Processing {} new issues for repo {} ({} already cached)",
+            issues.len(),
+            repo.name,
+            initial_count - issues.len()
+        );
 
         let mut repo_metrics = RepoTrainingMetrics {
             repo_url: repo.url.clone(),
@@ -319,18 +348,34 @@ impl TrainingOrchestrator {
 
                     training_runs.push(training_run);
                     repo_metrics.predictions_made += 1;
-                    
+
                     // Mark as processed in cache
-                    if let Err(e) = cache.mark_processed(&repo.url, issue.issue_number, &format!("issue-{}", issue.issue_number), Some(run_id.to_string())) {
-                        tracing::warn!("Failed to update cache for issue {}: {}", issue.issue_number, e);
+                    if let Err(e) = cache.mark_processed(
+                        &repo.url,
+                        issue.issue_number,
+                        &format!("issue-{}", issue.issue_number),
+                        Some(run_id.to_string()),
+                    ) {
+                        tracing::warn!(
+                            "Failed to update cache for issue {}: {}",
+                            issue.issue_number,
+                            e
+                        );
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to get prediction for issue {}: {}", 
-                                  issue.issue_number, e);
+                    tracing::warn!(
+                        "Failed to get prediction for issue {}: {}",
+                        issue.issue_number,
+                        e
+                    );
                     // Mark as failed in cache
                     if let Err(ce) = cache.mark_failed(&repo.url, issue.issue_number) {
-                        tracing::warn!("Failed to mark issue {} as failed in cache: {}", issue.issue_number, ce);
+                        tracing::warn!(
+                            "Failed to mark issue {} as failed in cache: {}",
+                            issue.issue_number,
+                            ce
+                        );
                     }
                 }
             }
@@ -343,8 +388,12 @@ impl TrainingOrchestrator {
             repo_metrics.avg_f1 = f1s.iter().sum::<f64>() / f1s.len() as f64;
         }
 
-        tracing::info!("✅ Completed repo {}: {} predictions, F1={:.3}", 
-                      repo.name, training_runs.len(), repo_metrics.avg_f1);
+        tracing::info!(
+            "✅ Completed repo {}: {} predictions, F1={:.3}",
+            repo.name,
+            training_runs.len(),
+            repo_metrics.avg_f1
+        );
 
         Ok((repo_metrics, training_runs))
     }

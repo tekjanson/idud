@@ -38,7 +38,11 @@ impl TreeSitterParser {
 
         let mut graph = StableGraph::new();
         let file_pointer = GraphPointer::file(path);
-        let file_node = graph.add_node(GraphNode::from_pointer(file_pointer, "file", path.to_path_buf()));
+        let file_node = graph.add_node(GraphNode::from_pointer(
+            file_pointer,
+            "file",
+            path.to_path_buf(),
+        ));
 
         let root = tree.root_node();
         self.walk_node(&root, source, path, file_node, &mut graph, None)?;
@@ -72,12 +76,20 @@ impl TreeSitterParser {
                 continue;
             }
 
-            self.walk_node(&child, source, path, node_index, graph, Some(structural_hash.clone()))?;
+            self.walk_node(
+                &child,
+                source,
+                path,
+                node_index,
+                graph,
+                Some(structural_hash.clone()),
+            )?;
         }
 
         Ok(())
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn hash_node(&self, node: &Node, source: &str, parent_digest: Option<&str>) -> Result<String> {
         let mut pieces = Vec::new();
         pieces.push(node.kind().to_string());
@@ -139,7 +151,11 @@ impl GraphNode {
         }
     }
 
-    pub fn from_pointer(pointer: GraphPointer, kind: impl Into<String>, source_path: PathBuf) -> Self {
+    pub fn from_pointer(
+        pointer: GraphPointer,
+        kind: impl Into<String>,
+        source_path: PathBuf,
+    ) -> Self {
         Self {
             pointer: pointer.clone(),
             kind: kind.into(),
@@ -166,7 +182,9 @@ mod tests {
     #[test]
     fn parses_rust_source_into_a_graph() {
         let parser = TreeSitterParser::new().unwrap();
-        let graph = parser.ingest_source("fn main() { println!(\"hi\"); }", "src/lib.rs").unwrap();
+        let graph = parser
+            .ingest_source("fn main() { println!(\"hi\"); }", "src/lib.rs")
+            .unwrap();
 
         assert!(graph.node_count() > 1);
         assert!(graph.edge_count() > 0);

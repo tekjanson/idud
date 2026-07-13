@@ -1,5 +1,5 @@
 //! Training cache: tracks which repos and issues have been processed
-//! 
+//!
 //! Enables idempotent training runs: each repo/issue combo is processed exactly once
 //! even if `make idud-grow` crashes and restarts.
 
@@ -54,10 +54,7 @@ impl TrainingCache {
     /// Check if a repo/issue has already been processed
     pub fn is_processed(&self, repo_url: &str, issue_number: u32) -> bool {
         let key = format!("{}#{}", repo_url, issue_number);
-        self.processed_keys
-            .read()
-            .unwrap()
-            .contains(&key)
+        self.processed_keys.read().unwrap().contains(&key)
     }
 
     /// Mark a repo/issue as processed
@@ -98,10 +95,7 @@ impl TrainingCache {
     /// Get all processed repos (for filtering discovery)
     pub fn get_processed_repos(&self) -> Vec<String> {
         let entries = self.entries.read().unwrap();
-        let mut repos: Vec<String> = entries
-            .iter()
-            .map(|e| e.repo_url.clone())
-            .collect();
+        let mut repos: Vec<String> = entries.iter().map(|e| e.repo_url.clone()).collect();
         repos.sort();
         repos.dedup();
         repos

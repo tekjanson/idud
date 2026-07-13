@@ -7,12 +7,12 @@
 //! 4. Tracks progress and implements idempotency
 //! 5. Logs metrics to DATALAKE_LOG.md (git-tracked)
 
-use serde::{Deserialize, Serialize};
+use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use anyhow::Result;
 use uuid::Uuid;
 
 /// Configuration for repo ingestion
@@ -138,7 +138,7 @@ impl RepositoryIngestionOrchestrator {
 
         let content = fs::read_to_string(log_path)?;
         let entries: Vec<IngestionLogEntry> = serde_json::from_str(&content)?;
-        
+
         let mut map = HashMap::new();
         for entry in entries {
             map.insert(entry.repo_name.clone(), entry);
@@ -158,10 +158,15 @@ impl RepositoryIngestionOrchestrator {
     pub async fn run(&mut self) -> Result<IngestionResults> {
         let run_id = Uuid::new_v4().to_string();
         let started_at = Utc::now();
-        let deadline = self.config.timeout_minutes
+        let deadline = self
+            .config
+            .timeout_minutes
             .map(|mins| started_at + Duration::minutes(mins as i64));
 
-        println!("🌱 Starting repository ingestion orchestration (run: {})", run_id);
+        println!(
+            "🌱 Starting repository ingestion orchestration (run: {})",
+            run_id
+        );
         println!("   Registry: {}", self.config.registry_path.display());
         println!("   Output: {}", self.config.output_dir.display());
         if let Some(max) = self.config.max_repos {
@@ -197,13 +202,21 @@ impl RepositoryIngestionOrchestrator {
 
             // Check if already ingested
             if self.config.skip_already_ingested && existing_log.contains_key(&repo.repo_name) {
-                println!("⏭️  [{}/{}] {} (already ingested, skipping)", 
-                    idx + 1, self.registry.repositories.len(), repo.repo_name);
+                println!(
+                    "⏭️  [{}/{}] {} (already ingested, skipping)",
+                    idx + 1,
+                    self.registry.repositories.len(),
+                    repo.repo_name
+                );
                 continue;
             }
 
-            print!("📦 [{}/{}] {} ... ", 
-                idx + 1, self.registry.repositories.len(), repo.repo_name);
+            print!(
+                "📦 [{}/{}] {} ... ",
+                idx + 1,
+                self.registry.repositories.len(),
+                repo.repo_name
+            );
             std::io::Write::flush(&mut std::io::stdout()).ok();
 
             let repo_started = Utc::now();
@@ -211,9 +224,11 @@ impl RepositoryIngestionOrchestrator {
                 Ok((files, signatories, contracts)) => {
                     let repo_completed = Utc::now();
                     let duration = (repo_completed - repo_started).num_seconds() as u64;
-                    
-                    println!("✅ {} signatories, {} contracts ({}s)",
-                        signatories, contracts, duration);
+
+                    println!(
+                        "✅ {} signatories, {} contracts ({}s)",
+                        signatories, contracts, duration
+                    );
 
                     let metric = IngestionMetrics {
                         repo_name: repo.repo_name.clone(),
@@ -244,7 +259,7 @@ impl RepositoryIngestionOrchestrator {
                 }
                 Err(e) => {
                     println!("❌ Error: {}", e);
-                    
+
                     let metric = IngestionMetrics {
                         repo_name: repo.repo_name.clone(),
                         repo_url: repo.repo_url.clone(),
@@ -284,15 +299,21 @@ impl RepositoryIngestionOrchestrator {
         let total_files: usize = metrics.iter().map(|m| m.files_processed).sum();
         let total_signatories: usize = metrics.iter().map(|m| m.signatories).sum();
         let total_contracts: usize = metrics.iter().map(|m| m.contracts).sum();
-        let successful = metrics.iter().filter(|m| m.status == IngestionStatus::Success).count();
-        let failed = metrics.iter().filter(|m| m.status == IngestionStatus::Failed).count();
+        let successful = metrics
+            .iter()
+            .filter(|m| m.status == IngestionStatus::Success)
+            .count();
+        let failed = metrics
+            .iter()
+            .filter(|m| m.status == IngestionStatus::Failed)
+            .count();
 
         let results = IngestionResults {
             run_id,
             started_at,
             completed_at,
             duration_secs: duration,
-            repos_processed: repos_processed,
+            repos_processed,
             total_repos: self.registry.repositories.len(),
             total_files,
             total_signatories,
@@ -324,28 +345,51 @@ impl RepositoryIngestionOrchestrator {
         // Return (files, signatories, contracts)
         // For now, contracts is estimated from the graph structure
         let contracts = result.signatories_registered.len(); // Rough estimate
-        
-        Ok((result.files_processed, result.signatories_registered.len(), contracts))
+
+        Ok((
+            result.files_processed,
+            result.signatories_registered.len(),
+            contracts,
+        ))
     }
 
     /// Update DATALAKE_LOG.md with progress
     fn update_markdown_log(&self, results: &IngestionResults) -> Result<()> {
         let log_path = self.config.output_dir.join("..").join("DATALAKE_LOG.md");
-        
+
         let mut content = String::new();
         content.push_str("# Data Lake Ingestion Log\n\n");
-        content.push_str(&format!("**Last Updated**: {}\n\n", Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
-        
+        content.push_str(&format!(
+            "**Last Updated**: {}\n\n",
+            Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+        ));
+
         content.push_str("## Current Status\n\n");
         content.push_str(&format!("- **Run ID**: {}\n", results.run_id));
-        content.push_str(&format!("- **Duration**: {} seconds ({:.1} minutes)\n", results.duration_secs, results.duration_secs as f64 / 60.0));
-        content.push_str(&format!("- **Repos Processed**: {}/{}\n", results.repos_processed, results.total_repos));
-        content.push_str(&format!("- **Success**: {} | **Failed**: {}\n\n", results.successful, results.failed));
-        
+        content.push_str(&format!(
+            "- **Duration**: {} seconds ({:.1} minutes)\n",
+            results.duration_secs,
+            results.duration_secs as f64 / 60.0
+        ));
+        content.push_str(&format!(
+            "- **Repos Processed**: {}/{}\n",
+            results.repos_processed, results.total_repos
+        ));
+        content.push_str(&format!(
+            "- **Success**: {} | **Failed**: {}\n\n",
+            results.successful, results.failed
+        ));
+
         content.push_str("## Aggregated Metrics\n\n");
         content.push_str(&format!("- **Total Files**: {}\n", results.total_files));
-        content.push_str(&format!("- **Total Signatories**: {}\n", results.total_signatories));
-        content.push_str(&format!("- **Total Contracts**: {}\n\n", results.total_contracts));
+        content.push_str(&format!(
+            "- **Total Signatories**: {}\n",
+            results.total_signatories
+        ));
+        content.push_str(&format!(
+            "- **Total Contracts**: {}\n\n",
+            results.total_contracts
+        ));
 
         content.push_str("## Repository Breakdown\n\n");
         content.push_str("| Repo | Status | Files | Signatories | Contracts | Time (s) |\n");
@@ -409,18 +453,19 @@ mod tests {
         if config.registry_path.exists() {
             let result = RepositoryIngestionOrchestrator::new(config);
             assert!(result.is_ok(), "Should load registry successfully");
-            
+
             if let Ok(orchestrator) = result {
-                assert!(!orchestrator.registry.repositories.is_empty(), 
-                    "Registry should have repositories");
+                assert!(
+                    !orchestrator.registry.repositories.is_empty(),
+                    "Registry should have repositories"
+                );
             }
         }
     }
 
     #[test]
     fn test_idempotency_log() {
-        let config = RepoIngestionConfig::default_paths();
-        
+        let _config = RepoIngestionConfig::default_paths();
         let entry = IngestionLogEntry {
             repo_name: "test-repo".to_string(),
             repo_url: "https://github.com/test/repo".to_string(),
@@ -434,7 +479,7 @@ mod tests {
 
         let mut log_entries = vec![entry];
         let entries = log_entries.pop().unwrap();
-        
+
         assert_eq!(entries.repo_name, "test-repo");
         assert_eq!(entries.files_processed, 100);
     }

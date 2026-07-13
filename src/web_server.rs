@@ -1,15 +1,15 @@
 //! src/web_server.rs
 //! Simple HTTP server serving the contract graph visualization
 
-use actix_web::{web, App, HttpServer, HttpResponse, middleware};
+use crate::{ContractLedger, RepositoryIngestionConfig, RepositoryTraverser};
 use actix_files::Files;
 use actix_multipart::Multipart;
-use std::sync::Arc;
-use crate::{ContractLedger, RepositoryTraverser, RepositoryIngestionConfig};
-use serde_json::json;
-use serde::{Deserialize, Serialize};
-use pulldown_cmark::{Parser, Event};
+use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use futures_util::TryStreamExt;
+use pulldown_cmark::{Event, Parser};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IngestRepoRequest {
@@ -83,9 +83,9 @@ impl Default for WebServerConfig {
 pub async fn serve(ledger: Arc<ContractLedger>, config: WebServerConfig) -> std::io::Result<()> {
     let ledger = web::Data::new(ledger);
     let addr = format!("{}:{}", config.host, config.port);
-    
+
     println!("🌐 Starting visualization server at http://{}", addr);
-    
+
     HttpServer::new(move || {
         App::new()
             .app_data(ledger.clone())
@@ -103,8 +103,10 @@ pub async fn serve(ledger: Arc<ContractLedger>, config: WebServerConfig) -> std:
                     .route("/import-file", web::post().to(import_file))
                     .route("/ingest-repo", web::post().to(ingest_repo))
                     .route("/training/discover", web::get().to(training_discover))
-                    .route("/training/issue/{repo_owner}/{repo_name}/{issue_id}", 
-                           web::get().to(training_fetch_issue))
+                    .route(
+                        "/training/issue/{repo_owner}/{repo_name}/{issue_id}",
+                        web::get().to(training_fetch_issue),
+                    )
                     .route("/training/predict", web::post().to(training_predict))
                     .route("/training/validate", web::post().to(training_validate))
                     .route("/training/metrics", web::get().to(training_metrics))
@@ -112,7 +114,7 @@ pub async fn serve(ledger: Arc<ContractLedger>, config: WebServerConfig) -> std:
                     .route("/training/start", web::post().to(training_start))
                     .route("/training/repos", web::get().to(training_repos))
                     .route("/training/link-tree", web::get().to(training_link_tree))
-                    .route("/training/runs", web::get().to(training_runs))
+                    .route("/training/runs", web::get().to(training_runs)),
             )
             .service(Files::new("/", "./ui/dist").index_file("index.html"))
     })
@@ -146,7 +148,11 @@ async fn get_graph(ledger: web::Data<Arc<ContractLedger>>) -> HttpResponse {
         })
         .collect();
 
-    HttpResponse::Ok().json(GraphResponse { nodes, edges, stats })
+    HttpResponse::Ok().json(GraphResponse {
+        nodes,
+        edges,
+        stats,
+    })
 }
 
 async fn get_signatories(ledger: web::Data<Arc<ContractLedger>>) -> HttpResponse {
@@ -165,10 +171,7 @@ async fn get_contracts(ledger: web::Data<Arc<ContractLedger>>) -> HttpResponse {
     }))
 }
 
-async fn get_chain(
-    id: web::Path<String>,
-    ledger: web::Data<Arc<ContractLedger>>,
-) -> HttpResponse {
+async fn get_chain(id: web::Path<String>, ledger: web::Data<Arc<ContractLedger>>) -> HttpResponse {
     let node_id = id.into_inner();
     if let Some(chain) = ledger.trace_chain_of_obligation(&node_id, 5) {
         HttpResponse::Ok().json(chain)
@@ -204,7 +207,7 @@ async fn search_nodes(
 ) -> HttpResponse {
     let search_term = query.q.to_lowercase();
     let signatories = ledger.get_all_signatories();
-    
+
     let results: Vec<&crate::types::Signatory> = signatories
         .iter()
         .filter(|sig| {
@@ -238,7 +241,10 @@ async fn export_graph(ledger: web::Data<Arc<ContractLedger>>) -> HttpResponse {
 
     HttpResponse::Ok()
         .content_type("application/json")
-        .insert_header(("Content-Disposition", "attachment; filename=\"idud-export.json\""))
+        .insert_header((
+            "Content-Disposition",
+            "attachment; filename=\"idud-export.json\"",
+        ))
         .json(export_data)
 }
 
@@ -248,7 +254,8 @@ async fn import_url(
 ) -> HttpResponse {
     match fetch_and_parse_markdown(&req.url).await {
         Ok((content, sections)) => {
-            let signatories_added = register_markdown_sections(ledger.get_ref(), &content, &sections);
+            let signatories_added =
+                register_markdown_sections(ledger.get_ref(), &content, &sections);
             HttpResponse::Ok().json(ImportResponse {
                 success: true,
                 message: format!("Successfully imported {} sections from URL", sections.len()),
@@ -256,12 +263,10 @@ async fn import_url(
                 sections_parsed: sections.len(),
             })
         }
-        Err(e) => {
-            HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "message": format!("Failed to import from URL: {}", e),
-            }))
-        }
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": format!("Failed to import from URL: {}", e),
+        })),
     }
 }
 
@@ -270,7 +275,7 @@ async fn import_file(
     ledger: web::Data<Arc<ContractLedger>>,
 ) -> HttpResponse {
     let mut file_content = String::new();
-    
+
     while let Ok(Some(mut field)) = payload.try_next().await {
         if field.name() == "file" {
             let mut data = Vec::new();
@@ -280,30 +285,32 @@ async fn import_file(
             file_content = String::from_utf8_lossy(&data).to_string();
         }
     }
-    
+
     if file_content.is_empty() {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
             "message": "No file content provided",
         }));
     }
-    
+
     match parse_markdown_content(&file_content) {
         Ok(sections) => {
-            let signatories_added = register_markdown_sections(ledger.get_ref(), &file_content, &sections);
+            let signatories_added =
+                register_markdown_sections(ledger.get_ref(), &file_content, &sections);
             HttpResponse::Ok().json(ImportResponse {
                 success: true,
-                message: format!("Successfully imported {} sections from file", sections.len()),
+                message: format!(
+                    "Successfully imported {} sections from file",
+                    sections.len()
+                ),
                 signatories_added,
                 sections_parsed: sections.len(),
             })
         }
-        Err(e) => {
-            HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "message": format!("Failed to parse markdown: {}", e),
-            }))
-        }
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": format!("Failed to parse markdown: {}", e),
+        })),
     }
 }
 
@@ -316,7 +323,7 @@ async fn fetch_and_parse_markdown(url: &str) -> Result<(String, Vec<MarkdownSect
         .text()
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
-    
+
     let sections = parse_markdown_content(&content)?;
     Ok((content, sections))
 }
@@ -334,43 +341,41 @@ fn parse_markdown_content(content: &str) -> Result<Vec<MarkdownSection>, String>
     let mut sections = Vec::new();
     let mut current_section: Option<MarkdownSection> = None;
     let mut current_content = String::new();
-    
+
     for event in parser {
         match event {
-            Event::Start(tag) => {
-                match tag {
-                    pulldown_cmark::Tag::Heading(level, _, _) => {
-                        if let Some(section) = current_section.take() {
-                            sections.push(MarkdownSection {
-                                title: section.title,
-                                level: section.level,
-                                content: current_content.trim().to_string(),
-                                links: section.links,
-                            });
-                            current_content.clear();
-                        }
-                        current_section = Some(MarkdownSection {
-                            title: String::new(),
-                            level: match level {
-                                pulldown_cmark::HeadingLevel::H1 => 1,
-                                pulldown_cmark::HeadingLevel::H2 => 2,
-                                pulldown_cmark::HeadingLevel::H3 => 3,
-                                pulldown_cmark::HeadingLevel::H4 => 4,
-                                pulldown_cmark::HeadingLevel::H5 => 5,
-                                pulldown_cmark::HeadingLevel::H6 => 6,
-                            },
-                            content: String::new(),
-                            links: Vec::new(),
+            Event::Start(tag) => match tag {
+                pulldown_cmark::Tag::Heading(level, _, _) => {
+                    if let Some(section) = current_section.take() {
+                        sections.push(MarkdownSection {
+                            title: section.title,
+                            level: section.level,
+                            content: current_content.trim().to_string(),
+                            links: section.links,
                         });
+                        current_content.clear();
                     }
-                    pulldown_cmark::Tag::Link(_, url, _) => {
-                        if let Some(section) = &mut current_section {
-                            section.links.push(url.to_string());
-                        }
-                    }
-                    _ => {}
+                    current_section = Some(MarkdownSection {
+                        title: String::new(),
+                        level: match level {
+                            pulldown_cmark::HeadingLevel::H1 => 1,
+                            pulldown_cmark::HeadingLevel::H2 => 2,
+                            pulldown_cmark::HeadingLevel::H3 => 3,
+                            pulldown_cmark::HeadingLevel::H4 => 4,
+                            pulldown_cmark::HeadingLevel::H5 => 5,
+                            pulldown_cmark::HeadingLevel::H6 => 6,
+                        },
+                        content: String::new(),
+                        links: Vec::new(),
+                    });
                 }
-            }
+                pulldown_cmark::Tag::Link(_, url, _) => {
+                    if let Some(section) = &mut current_section {
+                        section.links.push(url.to_string());
+                    }
+                }
+                _ => {}
+            },
             Event::Text(text) => {
                 if let Some(section) = &mut current_section {
                     if section.title.is_empty() {
@@ -386,7 +391,7 @@ fn parse_markdown_content(content: &str) -> Result<Vec<MarkdownSection>, String>
             _ => {}
         }
     }
-    
+
     if let Some(section) = current_section.take() {
         sections.push(MarkdownSection {
             title: section.title,
@@ -395,7 +400,7 @@ fn parse_markdown_content(content: &str) -> Result<Vec<MarkdownSection>, String>
             links: section.links,
         });
     }
-    
+
     Ok(sections)
 }
 
@@ -404,11 +409,11 @@ fn register_markdown_sections(
     _content: &str,
     sections: &[MarkdownSection],
 ) -> usize {
-    use crate::types::{Signatory, SignatoryType, Contract, ClauseType, ContractSource};
-    
+    use crate::types::{ClauseType, Contract, ContractSource, Signatory, SignatoryType};
+
     let mut registered = 0;
     let mut section_ids = Vec::new();
-    
+
     for section in sections {
         let signatory = Signatory::new(
             SignatoryType::MarkdownSection,
@@ -418,22 +423,19 @@ fn register_markdown_sections(
         )
         .with_metadata("level".to_string(), json!(section.level))
         .with_metadata("links".to_string(), json!(section.links));
-        
+
         if let Ok(sig_id) = ledger.register_signatory(signatory) {
             section_ids.push(sig_id);
             registered += 1;
         }
     }
-    
+
     for (i, section_id) in section_ids.iter().enumerate() {
         let level = sections.get(i).map(|s| s.level).unwrap_or(1);
-        
+
         if let Some(other_id) = section_ids.iter().skip(i + 1).next() {
-            let other_level = sections
-                .get(i + 1)
-                .map(|s| s.level)
-                .unwrap_or(level);
-            
+            let other_level = sections.get(i + 1).map(|s| s.level).unwrap_or(level);
+
             if other_level > level {
                 let contract = Contract::new(
                     other_id.clone(),
@@ -442,13 +444,16 @@ fn register_markdown_sections(
                     0.95,
                     ContractSource::Deterministic,
                 )
-                .with_reasoning(format!("Section at level {} documents level {}", level, other_level));
-                
+                .with_reasoning(format!(
+                    "Section at level {} documents level {}",
+                    level, other_level
+                ));
+
                 let _ = ledger.draft_contract(contract);
             }
         }
     }
-    
+
     registered
 }
 
@@ -458,16 +463,16 @@ async fn ingest_repo(
 ) -> HttpResponse {
     let url = req.url.clone();
     let branch = req.branch.clone();
-    
+
     println!("📦 Ingest request: {} (branch: {})", url, branch);
-    
+
     let config = RepositoryIngestionConfig {
         repo_url: url.clone(),
         branch: branch.clone(),
         work_dir: None,
         skip_clone: false,
     };
-    
+
     match RepositoryTraverser::new(config).ingest().await {
         Ok(result) => {
             let sig_count = result.signatories_registered.len();
@@ -503,15 +508,13 @@ fn default_discover_limit() -> usize {
 
 async fn training_discover(query: web::Query<DiscoverQuery>) -> HttpResponse {
     let limit = query.limit.min(1000).max(1);
-    
+
     match crate::discover_training_repos(limit).await {
-        Ok(candidates) => {
-            HttpResponse::Ok().json(json!({
-                "success": true,
-                "candidates": candidates,
-                "count": candidates.len(),
-            }))
-        }
+        Ok(candidates) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "candidates": candidates,
+            "count": candidates.len(),
+        })),
         Err(e) => {
             eprintln!("❌ Repository discovery failed: {}", e);
             let status_code = match e {
@@ -554,14 +557,12 @@ async fn training_fetch_issue(params: web::Path<IssueParams>) -> HttpResponse {
     let repo_owner = &params.repo_owner;
     let repo_name = &params.repo_name;
     let issue_id = params.issue_id;
-    
+
     match crate::fetch_issue_and_linked_pr(repo_owner, repo_name, issue_id).await {
-        Ok(issue_data) => {
-            HttpResponse::Ok().json(json!({
-                "success": true,
-                "data": issue_data,
-            }))
-        }
+        Ok(issue_data) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "data": issue_data,
+        })),
         Err(e) => {
             eprintln!("❌ Issue fetch failed: {}", e);
             let status_code = match e {
@@ -608,15 +609,13 @@ async fn training_predict(
     };
 
     match crate::predict_files_from_issue(prediction_request, &api_key).await {
-        Ok(response) => {
-            HttpResponse::Ok().json(json!({
-                "success": true,
-                "predicted_files": response.predicted_files,
-                "model_used": response.model_used,
-                "tokens_used": response.tokens_used,
-                "reasoning": response.reasoning,
-            }))
-        }
+        Ok(response) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "predicted_files": response.predicted_files,
+            "model_used": response.model_used,
+            "tokens_used": response.tokens_used,
+            "reasoning": response.reasoning,
+        })),
         Err(e) => {
             eprintln!("❌ Prediction failed: {}", e);
             HttpResponse::InternalServerError().json(json!({
@@ -746,19 +745,15 @@ pub struct TrainingRunsResponse {
     pub runs: Vec<TrainingRunRecord>,
 }
 
-async fn training_validate(
-    req: web::Json<TrainingValidateRequest>,
-) -> HttpResponse {
+async fn training_validate(req: web::Json<TrainingValidateRequest>) -> HttpResponse {
     let datalake_path = "./data/training_datalake";
-    
+
     match crate::TrainingDataLake::new(datalake_path) {
         Ok(datalake) => {
             // Validate the prediction
-            let metrics = crate::validate_prediction(
-                req.predicted_files.clone(),
-                req.actual_files.clone(),
-            );
-            
+            let metrics =
+                crate::validate_prediction(req.predicted_files.clone(), req.actual_files.clone());
+
             // Write to datalake
             match crate::write_training_result(
                 &datalake,
@@ -768,13 +763,11 @@ async fn training_validate(
                 req.predicted_files.clone(),
                 req.actual_files.clone(),
             ) {
-                Ok(run_id) => {
-                    HttpResponse::Ok().json(TrainingValidateResponse {
-                        success: true,
-                        run_id: run_id.to_string(),
-                        metrics,
-                    })
-                }
+                Ok(run_id) => HttpResponse::Ok().json(TrainingValidateResponse {
+                    success: true,
+                    run_id: run_id.to_string(),
+                    metrics,
+                }),
                 Err(e) => {
                     eprintln!("❌ Failed to write training result: {}", e);
                     HttpResponse::InternalServerError().json(json!({
@@ -796,7 +789,7 @@ async fn training_validate(
 
 async fn training_metrics() -> HttpResponse {
     let datalake_path = "./data/training_datalake";
-    
+
     match crate::TrainingDataLake::new(datalake_path) {
         Ok(datalake) => {
             // Calculate aggregated metrics
@@ -806,7 +799,7 @@ async fn training_metrics() -> HttpResponse {
                     let lang_metrics = crate::calculate_metrics_by_language(&datalake)
                         .ok()
                         .and_then(|m| if m.is_empty() { None } else { Some(m) });
-                    
+
                     HttpResponse::Ok().json(TrainingMetricsResponse {
                         success: true,
                         aggregated_metrics: aggregated,
@@ -844,9 +837,12 @@ async fn training_status() -> HttpResponse {
 
 async fn training_start(req: web::Json<TrainingStartRequest>) -> HttpResponse {
     use uuid::Uuid;
-    
-    println!("🎓 Training start request: repos={}, concurrent={}", req.repos, req.concurrent);
-    
+
+    println!(
+        "🎓 Training start request: repos={}, concurrent={}",
+        req.repos, req.concurrent
+    );
+
     // Validate request
     if req.repos == 0 {
         return HttpResponse::BadRequest().json(json!({
@@ -854,21 +850,21 @@ async fn training_start(req: web::Json<TrainingStartRequest>) -> HttpResponse {
             "error": "repos must be greater than 0"
         }));
     }
-    
+
     if req.concurrent == 0 {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": "concurrent must be greater than 0"
         }));
     }
-    
+
     // In a real implementation, this would spawn a background task
     // For now, return a batch ID and estimated time
     let batch_id = format!("batch-{}", Uuid::new_v4());
     let estimated_time = (req.repos as u64 * 60) / req.concurrent as u64;
-    
+
     println!("✅ Training batch created: {}", batch_id);
-    
+
     HttpResponse::Ok().json(TrainingStartResponse {
         success: true,
         batch_id,
@@ -879,25 +875,30 @@ async fn training_start(req: web::Json<TrainingStartRequest>) -> HttpResponse {
 
 async fn training_repos() -> HttpResponse {
     let datalake_path = "./data/training_datalake";
-    
+
     match crate::TrainingDataLake::new(datalake_path) {
         Ok(datalake) => {
             match datalake.list_repo_metadata() {
                 Ok(repos) => {
                     let mut repo_metrics = Vec::new();
-                    
+
                     for repo in repos {
-                        let training_runs = datalake.list_training_runs()
+                        let training_runs = datalake
+                            .list_training_runs()
                             .unwrap_or_default()
                             .into_iter()
                             .filter(|run| run.repo_url == repo.url)
                             .collect::<Vec<_>>();
-                        
+
                         if !training_runs.is_empty() {
-                            let avg_precision = training_runs.iter().map(|r| r.precision).sum::<f64>() / training_runs.len() as f64;
-                            let avg_recall = training_runs.iter().map(|r| r.recall).sum::<f64>() / training_runs.len() as f64;
-                            let avg_f1 = training_runs.iter().map(|r| r.f1).sum::<f64>() / training_runs.len() as f64;
-                            
+                            let avg_precision =
+                                training_runs.iter().map(|r| r.precision).sum::<f64>()
+                                    / training_runs.len() as f64;
+                            let avg_recall = training_runs.iter().map(|r| r.recall).sum::<f64>()
+                                / training_runs.len() as f64;
+                            let avg_f1 = training_runs.iter().map(|r| r.f1).sum::<f64>()
+                                / training_runs.len() as f64;
+
                             repo_metrics.push(TrainingRepoMetrics {
                                 url: repo.url.clone(),
                                 owner: repo.owner.clone(),
@@ -912,10 +913,14 @@ async fn training_repos() -> HttpResponse {
                             });
                         }
                     }
-                    
+
                     // Sort by accuracy improvement
-                    repo_metrics.sort_by(|a, b| b.accuracy_improvement.partial_cmp(&a.accuracy_improvement).unwrap_or(std::cmp::Ordering::Equal));
-                    
+                    repo_metrics.sort_by(|a, b| {
+                        b.accuracy_improvement
+                            .partial_cmp(&a.accuracy_improvement)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+
                     HttpResponse::Ok().json(TrainingReposResponse {
                         success: true,
                         repos: repo_metrics,
@@ -983,7 +988,7 @@ async fn training_link_tree() -> HttpResponse {
             accuracy_impact: 0.85,
         },
     ];
-    
+
     let links = vec![
         TrainingLink {
             from_project: "Tokio".to_string(),
@@ -1016,7 +1021,7 @@ async fn training_link_tree() -> HttpResponse {
             impact_score: 0.85,
         },
     ];
-    
+
     HttpResponse::Ok().json(TrainingLinkTreeResponse {
         success: true,
         projects: training_projects,
@@ -1026,14 +1031,20 @@ async fn training_link_tree() -> HttpResponse {
 
 async fn training_runs() -> HttpResponse {
     let datalake_path = "./data/training_datalake";
-    
+
     match crate::TrainingDataLake::new(datalake_path) {
         Ok(datalake) => {
             match datalake.list_training_runs() {
                 Ok(runs) => {
-                    let mut run_records: Vec<TrainingRunRecord> = runs.iter()
+                    let mut run_records: Vec<TrainingRunRecord> = runs
+                        .iter()
                         .map(|run| {
-                            let repo_name = run.repo_url.split('/').last().unwrap_or("unknown").to_string();
+                            let repo_name = run
+                                .repo_url
+                                .split('/')
+                                .last()
+                                .unwrap_or("unknown")
+                                .to_string();
                             TrainingRunRecord {
                                 run_id: run.run_id.to_string(),
                                 timestamp: run.timestamp.to_rfc3339(),
@@ -1044,11 +1055,11 @@ async fn training_runs() -> HttpResponse {
                             }
                         })
                         .collect();
-                    
+
                     // Sort by timestamp descending and take last 50
                     run_records.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
                     run_records.truncate(50);
-                    
+
                     HttpResponse::Ok().json(TrainingRunsResponse {
                         success: true,
                         runs: run_records,
@@ -1072,4 +1083,3 @@ async fn training_runs() -> HttpResponse {
         }
     }
 }
-

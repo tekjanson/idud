@@ -244,7 +244,7 @@ impl ContractLedger {
             let type_name = format!("{:?}", signatory.signatory_type);
             by_type
                 .entry(type_name)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(signatory.id.clone());
         }
 

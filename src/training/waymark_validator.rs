@@ -20,12 +20,11 @@ pub struct WaymarkData {
 
 /// Loads Waymark contracts from JSON file
 pub fn load_waymark_contracts<P: AsRef<Path>>(path: P) -> Result<WaymarkData> {
-    let content = fs::read_to_string(path)
-        .context("Failed to read Waymark contracts file")?;
-    
-    let data: WaymarkData = serde_json::from_str(&content)
-        .context("Failed to parse Waymark contracts JSON")?;
-    
+    let content = fs::read_to_string(path).context("Failed to read Waymark contracts file")?;
+
+    let data: WaymarkData =
+        serde_json::from_str(&content).context("Failed to parse Waymark contracts JSON")?;
+
     Ok(data)
 }
 
@@ -70,12 +69,9 @@ pub struct ValidationEngine {
 impl ValidationEngine {
     /// Create validation engine from Waymark data
     pub fn from_waymark(waymark_data: WaymarkData) -> Self {
-        let graph = CoDependencyGraph::build(
-            waymark_data.signatories,
-            waymark_data.contracts,
-        );
+        let graph = CoDependencyGraph::build(waymark_data.signatories, waymark_data.contracts);
         let predictor = PRPredictor::new(graph.clone());
-        
+
         Self { predictor, graph }
     }
 
@@ -103,7 +99,11 @@ impl ValidationEngine {
             .count();
 
         let precision = if prediction.predicted_files.is_empty() {
-            if test_case.expected_related_files.is_empty() { 1.0 } else { 0.0 }
+            if test_case.expected_related_files.is_empty() {
+                1.0
+            } else {
+                0.0
+            }
         } else {
             true_positives as f32 / prediction.predicted_files.len() as f32
         };

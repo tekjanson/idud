@@ -30,15 +30,15 @@ async fn waymark_integration_ingest_and_analyze() {
 
     // Run ingestion
     let traverser = RepositoryTraverser::new(config);
-    let result = traverser
-        .ingest()
-        .await
-        .expect("Ingestion should succeed");
+    let result = traverser.ingest().await.expect("Ingestion should succeed");
 
     println!("\n=== Waymark Repository Analysis Results ===");
     println!("Repository: {}", result.repository);
     println!("Files processed: {}", result.files_processed);
-    println!("Signatories registered: {}", result.signatories_registered.len());
+    println!(
+        "Signatories registered: {}",
+        result.signatories_registered.len()
+    );
     println!("Errors encountered: {}", result.errors.len());
 
     // Assertion 1: Files should be processed (expect 600+)
@@ -47,7 +47,10 @@ async fn waymark_integration_ingest_and_analyze() {
         "Expected 600+ files in Waymark, found {}",
         result.files_processed
     );
-    println!("✅ Files processed: {} (expected >600)", result.files_processed);
+    println!(
+        "✅ Files processed: {} (expected >600)",
+        result.files_processed
+    );
 
     // Assertion 2: Signatories should be extracted (expect 6000+)
     assert!(
@@ -103,7 +106,11 @@ async fn waymark_integration_ingest_and_analyze() {
     for (location, sigs) in location_groups.iter().take(5) {
         println!("  {} ({} signatories)", location, sigs.len());
         for sig in sigs.iter().take(2) {
-            println!("    - {} ({})", sig.label, format!("{:?}", sig.signatory_type));
+            println!(
+                "    - {} ({})",
+                sig.label,
+                format!("{:?}", sig.signatory_type)
+            );
             shown += 1;
         }
         if shown >= 10 {
@@ -178,10 +185,7 @@ async fn waymark_integration_dependency_patterns() {
     };
 
     let traverser = RepositoryTraverser::new(config);
-    let result = traverser
-        .ingest()
-        .await
-        .expect("Ingestion should succeed");
+    let result = traverser.ingest().await.expect("Ingestion should succeed");
 
     println!("\n=== Waymark Dependency Pattern Analysis ===");
 
@@ -195,7 +199,9 @@ async fn waymark_integration_dependency_patterns() {
     let source_sigs: Vec<_> = result
         .signatories_registered
         .iter()
-        .filter(|s| s.signatory_type == SignatoryType::Function || s.signatory_type == SignatoryType::File)
+        .filter(|s| {
+            s.signatory_type == SignatoryType::Function || s.signatory_type == SignatoryType::File
+        })
         .collect();
 
     println!(
@@ -244,7 +250,10 @@ async fn waymark_integration_dependency_patterns() {
         "Expected 200+ TypeScript/JavaScript files, found {}",
         ts_family_count
     );
-    println!("✅ TypeScript/JavaScript focus confirmed: {} files", ts_family_count);
+    println!(
+        "✅ TypeScript/JavaScript focus confirmed: {} files",
+        ts_family_count
+    );
 
     println!("\n=== 🎉 Dependency Pattern Analysis PASSED ===");
 }
@@ -265,10 +274,7 @@ async fn waymark_integration_metadata_validation() {
     };
 
     let traverser = RepositoryTraverser::new(config);
-    let result = traverser
-        .ingest()
-        .await
-        .expect("Ingestion should succeed");
+    let result = traverser.ingest().await.expect("Ingestion should succeed");
 
     println!("\n=== Waymark Metadata Validation ===");
 
@@ -347,9 +353,7 @@ async fn waymark_integration_metadata_validation() {
 // ============================================================================
 
 /// Group signatories by their source location (file path)
-fn group_signatories_by_location(
-    signatories: &[Signatory],
-) -> Vec<(String, Vec<&Signatory>)> {
+fn group_signatories_by_location(signatories: &[Signatory]) -> Vec<(String, Vec<&Signatory>)> {
     let mut groups: std::collections::HashMap<String, Vec<&Signatory>> =
         std::collections::HashMap::new();
 
@@ -359,15 +363,8 @@ fn group_signatories_by_location(
             let after_branch = start + 6; // len("/blob/")
             if let Some(branch_end) = sig.source_uri[after_branch..].find('/') {
                 let file_path = sig.source_uri[after_branch + branch_end + 1..].to_string();
-                let base_path = file_path
-                    .split('/')
-                    .take(2)
-                    .collect::<Vec<_>>()
-                    .join("/");
-                groups
-                    .entry(base_path)
-                    .or_insert_with(Vec::new)
-                    .push(sig);
+                let base_path = file_path.split('/').take(2).collect::<Vec<_>>().join("/");
+                groups.entry(base_path).or_insert_with(Vec::new).push(sig);
             }
         }
     }

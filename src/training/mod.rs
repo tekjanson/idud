@@ -2,40 +2,39 @@
 
 pub mod cache;
 pub mod discovery;
-pub mod predictor;
 pub mod orchestrator;
-pub mod validator;
-pub mod token_meter;
 pub mod pr_predictor;
+pub mod predictor;
 pub mod repo_ingestion_orchestrator;
 pub mod repo_understanding;
+pub mod token_meter;
+pub mod validator;
 pub mod waymark_validator;
 
-pub use cache::{TrainingCache, CacheEntry, CacheStats};
+pub use cache::{CacheEntry, CacheStats, TrainingCache};
 pub use discovery::{
-    discover_training_repos, fetch_issue_and_linked_pr, RepoCandidate, IssueWithPR,
-    RateLimitStatus,
+    discover_training_repos, fetch_issue_and_linked_pr, IssueWithPR, RateLimitStatus, RepoCandidate,
 };
-pub use predictor::{predict_files_from_issue, PredictionRequest, PredictionResponse, TokenUsage};
 pub use orchestrator::{
-    TrainingOrchestrator, TrainingConfig, TrainingResults, TrainingBatch, TrainingStatus,
-    RepoTrainingMetrics, batch_training_jobs,
+    batch_training_jobs, RepoTrainingMetrics, TrainingBatch, TrainingConfig, TrainingOrchestrator,
+    TrainingResults, TrainingStatus,
 };
-pub use validator::{
-    validate_prediction, write_training_result, calculate_aggregate_metrics,
-    calculate_metrics_by_language, ValidationMetrics, LanguageMetrics,
-};
-pub use token_meter::{TokenMeter, TokenStats};
-pub use pr_predictor::{CoDependencyGraph, PRPredictor, FilePrediction};
+pub use pr_predictor::{CoDependencyGraph, FilePrediction, PRPredictor};
+pub use predictor::{predict_files_from_issue, PredictionRequest, PredictionResponse, TokenUsage};
 pub use repo_ingestion_orchestrator::{
-    RepositoryIngestionOrchestrator, RepoIngestionConfig, RepositoryRegistry,
-    RepositoryEntry, IngestionMetrics, IngestionStatus, IngestionResults, IngestionLogEntry,
+    IngestionLogEntry, IngestionMetrics, IngestionResults, IngestionStatus, RepoIngestionConfig,
+    RepositoryEntry, RepositoryIngestionOrchestrator, RepositoryRegistry,
 };
 pub use repo_understanding::{
     build_synthetic_understanding, write_synthetic_understanding, DependencyHint, DirectorySummary,
     ExtensionSummary, JourneyCandidate, SyntheticUnderstanding, TestSummary,
 };
+pub use token_meter::{TokenMeter, TokenStats};
+pub use validator::{
+    calculate_aggregate_metrics, calculate_metrics_by_language, validate_prediction,
+    write_training_result, LanguageMetrics, ValidationMetrics,
+};
 pub use waymark_validator::{
-    load_waymark_contracts, ValidationEngine, PredictionTestCase, PredictionTestResult,
+    load_waymark_contracts, PredictionTestCase, PredictionTestResult, ValidationEngine,
     ValidationSummary, WaymarkData,
 };

@@ -2,8 +2,8 @@
 //! Regex-based extractors for different programming languages
 //! Extracts imports, function calls, type references, and inheritance patterns
 
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 // ============================================================================
 // RUST EXTRACTORS
@@ -41,8 +41,10 @@ impl RustExtractor {
 
     /// Extract trait implementations (type references)
     pub fn extract_trait_refs(content: &str) -> Vec<(String, f32)> {
-        static RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"impl\s+([a-zA-Z_][a-zA-Z0-9_]*(?::\s*[a-zA-Z_][a-zA-Z0-9_]*)?)\s+for").unwrap());
+        static RE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"impl\s+([a-zA-Z_][a-zA-Z0-9_]*(?::\s*[a-zA-Z_][a-zA-Z0-9_]*)?)\s+for")
+                .unwrap()
+        });
 
         RE.captures_iter(content)
             .map(|caps| {
@@ -55,7 +57,8 @@ impl RustExtractor {
     /// Extract struct/enum inheritance patterns
     pub fn extract_inherit(content: &str) -> Vec<(String, f32)> {
         static RE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"(?:struct|enum)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\([^)]*\))?(?:\{|;)").unwrap()
+            Regex::new(r"(?:struct|enum)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\([^)]*\))?(?:\{|;)")
+                .unwrap()
         });
 
         RE.captures_iter(content)
@@ -79,9 +82,8 @@ impl TypeScriptExtractor {
         let mut deps = Vec::new();
 
         // ES6 import statements - flexible pattern to catch all import forms
-        static ES6_RE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r#"import\s+[^;]*?from\s+["']([^"']+)["']"#).unwrap()
-        });
+        static ES6_RE: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r#"import\s+[^;]*?from\s+["']([^"']+)["']"#).unwrap());
 
         for caps in ES6_RE.captures_iter(content) {
             let module = caps[1].to_string();
@@ -106,7 +108,8 @@ impl TypeScriptExtractor {
 
         // Constructor calls: new ClassName(...)
         static CONSTR_RE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"new\s+([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\s*\(").unwrap()
+            Regex::new(r"new\s+([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\s*\(")
+                .unwrap()
         });
 
         for caps in CONSTR_RE.captures_iter(content) {
@@ -148,9 +151,8 @@ impl TypeScriptExtractor {
         }
 
         // Generic type parameters: <TypeParam>
-        static GENERIC_RE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"<\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:[,>]|extends)").unwrap()
-        });
+        static GENERIC_RE: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"<\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:[,>]|extends)").unwrap());
 
         for caps in GENERIC_RE.captures_iter(content) {
             let type_param = caps[1].to_string();
@@ -193,8 +195,10 @@ impl TypeScriptExtractor {
 
         // Interface extends Interface
         static IFACE_EXTENDS_RE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"interface\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s+extends\s+([a-zA-Z_$][a-zA-Z0-9_$,.\s]*)")
-                .unwrap()
+            Regex::new(
+                r"interface\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s+extends\s+([a-zA-Z_$][a-zA-Z0-9_$,.\s]*)",
+            )
+            .unwrap()
         });
 
         for caps in IFACE_EXTENDS_RE.captures_iter(content) {
@@ -230,8 +234,10 @@ impl PythonExtractor {
         }
 
         // import x
-        static IMPORT_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"import\s+([a-zA-Z_][a-zA-Z0-9_\.]*(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)").unwrap());
+        static IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"import\s+([a-zA-Z_][a-zA-Z0-9_\.]*(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)")
+                .unwrap()
+        });
 
         for caps in IMPORT_RE.captures_iter(content) {
             let module = caps[1].to_string();
@@ -261,8 +267,22 @@ impl PythonExtractor {
             // Skip common built-ins
             if !matches!(
                 func.as_str(),
-                "print" | "len" | "str" | "int" | "float" | "list" | "dict" | "set" | "tuple"
-                    | "range" | "enumerate" | "zip" | "map" | "filter" | "all" | "any"
+                "print"
+                    | "len"
+                    | "str"
+                    | "int"
+                    | "float"
+                    | "list"
+                    | "dict"
+                    | "set"
+                    | "tuple"
+                    | "range"
+                    | "enumerate"
+                    | "zip"
+                    | "map"
+                    | "filter"
+                    | "all"
+                    | "any"
             ) {
                 deps.push((func, 0.65));
             }
@@ -276,9 +296,8 @@ impl PythonExtractor {
         let mut deps = Vec::new();
 
         // class Child(Parent)
-        static CLASS_RE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"class\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)").unwrap()
-        });
+        static CLASS_RE: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"class\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)").unwrap());
 
         for caps in CLASS_RE.captures_iter(content) {
             let parents = &caps[2];
@@ -307,8 +326,18 @@ impl PythonExtractor {
             // Skip primitive/built-in types
             if !matches!(
                 type_name.as_str(),
-                "str" | "int" | "float" | "bool" | "list" | "dict" | "set" | "tuple" | "None"
-                    | "Any" | "Optional" | "Union"
+                "str"
+                    | "int"
+                    | "float"
+                    | "bool"
+                    | "list"
+                    | "dict"
+                    | "set"
+                    | "tuple"
+                    | "None"
+                    | "Any"
+                    | "Optional"
+                    | "Union"
             ) {
                 deps.push((type_name, 0.70));
             }

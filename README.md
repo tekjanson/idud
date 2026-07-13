@@ -87,7 +87,7 @@ Latest training session: **2024-07-05**
   - C: 0.787 ✓
   - JavaScript: 0.620 (improving)
 
-📊 **[View Full Results →](TRAINING_RESULTS.md)**
+📊 **[View Full Results →](docs/reference/TRAINING_RESULTS.md)**
 
 ### Why This Matters
 
@@ -115,7 +115,7 @@ The training system is **fully idempotent**:
 - Already-processed (repo, issue) pairs are cached and skipped
 - Safe to run through crashes and code updates
 - Perfect for long-running training over weeks
-- See [TRAINING_IDEMPOTENCY.md](TRAINING_IDEMPOTENCY.md) for scaling strategies
+- See [TRAINING_IDEMPOTENCY.md](docs/reference/TRAINING_IDEMPOTENCY.md) for scaling strategies
 
 **View aggregated metrics:**
 ```bash
@@ -123,19 +123,19 @@ The training system is **fully idempotent**:
 ```
 
 **Contribute to training:**
-See [CONTRIBUTING_TO_TRAINING.md](CONTRIBUTING_TO_TRAINING.md) for how to:
+See [CONTRIBUTING_TO_TRAINING.md](docs/reference/CONTRIBUTING_TO_TRAINING.md) for how to:
 - Add a new repository for training validation
 - Interpret false positives vs. false negatives
 - Suggest improvements based on prediction failures
 
 ### Training Documentation
 
-- **[TRAINING_METHODOLOGY.md](TRAINING_METHODOLOGY.md)** — Deep dive into the self-validation architecture
-- **[TRAINING_RESULTS.md](TRAINING_RESULTS.md)** — Latest results, metrics by language, trends
-- **[TRAINING_IDEMPOTENCY.md](TRAINING_IDEMPOTENCY.md)** — How to safely scale training over weeks
-- **[TRAINING_VALIDATION.md](TRAINING_VALIDATION.md)** — How precision/recall/F1 are calculated
-- **[TRAINING_DISCOVERY.md](TRAINING_DISCOVERY.md)** — Repository discovery mechanics
-- **[CONTRIBUTING_TO_TRAINING.md](CONTRIBUTING_TO_TRAINING.md)** — How to contribute training data
+- **[TRAINING_METHODOLOGY.md](docs/reference/TRAINING_METHODOLOGY.md)** — Deep dive into the self-validation architecture
+- **[TRAINING_RESULTS.md](docs/reference/TRAINING_RESULTS.md)** — Latest results, metrics by language, trends
+- **[TRAINING_IDEMPOTENCY.md](docs/reference/TRAINING_IDEMPOTENCY.md)** — How to safely scale training over weeks
+- **[TRAINING_VALIDATION.md](docs/reference/TRAINING_VALIDATION.md)** — How precision/recall/F1 are calculated
+- **[TRAINING_DISCOVERY.md](docs/reference/TRAINING_DISCOVERY.md)** — Repository discovery mechanics
+- **[CONTRIBUTING_TO_TRAINING.md](docs/reference/CONTRIBUTING_TO_TRAINING.md)** — How to contribute training data
 - **[training/README.md](training/README.md)** — Developer guide for training module internals
 
 ### The Vision: "Code as Customer"

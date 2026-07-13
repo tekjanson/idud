@@ -1,27 +1,27 @@
 //! GitHub repository discovery for training validation candidates.
-//! 
+//!
 //! Discovers public repositories with active issues and PRs, recent updates,
 //! and sufficient community engagement (50+ stars) suitable for training validation.
 
-use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use thiserror::Error;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DiscoveryError {
     #[error("HTTP request failed: {0}")]
     HttpError(#[from] reqwest::Error),
-    
+
     #[error("GitHub API error: {0}")]
     ApiError(String),
-    
+
     #[error("JSON parsing error: {0}")]
     JsonError(#[from] serde_json::Error),
-    
+
     #[error("Rate limit exceeded")]
     RateLimited,
-    
+
     #[error("Repository not found: {0}")]
     RepoNotFound(String),
 }
@@ -71,15 +71,13 @@ const GITHUB_GRAPHQL_URL: &str = "https://api.github.com/graphql";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Discovers training candidate repositories from GitHub
-/// 
+///
 /// Returns repositories with:
 /// - Both issues and PRs (activity indicator)
 /// - Recent updates (> 30 days ago)
 /// - Minimum 50 stars (community engagement)
 pub async fn discover_training_repos(limit: usize) -> Result<Vec<RepoCandidate>, DiscoveryError> {
-    let client = Client::builder()
-        .timeout(REQUEST_TIMEOUT)
-        .build()?;
+    let client = Client::builder().timeout(REQUEST_TIMEOUT).build()?;
 
     // Calculate 30 days ago for recent activity filter
     let thirty_days_ago = chrono::Utc::now() - chrono::Duration::days(30);
@@ -129,11 +127,7 @@ pub async fn discover_training_repos(limit: usize) -> Result<Vec<RepoCandidate>,
         "#, date_filter)
     });
 
-    let response = client
-        .post(GITHUB_GRAPHQL_URL)
-        .json(&query)
-        .send()
-        .await?;
+    let response = client.post(GITHUB_GRAPHQL_URL).json(&query).send().await?;
 
     let status = response.status();
     let _rate_limit = parse_rate_limit_headers(&response);
@@ -161,13 +155,13 @@ pub async fn discover_training_repos(limit: usize) -> Result<Vec<RepoCandidate>,
         return Err(DiscoveryError::ApiError(error_msg));
     }
 
-    let data = gh_response.data.ok_or_else(|| {
-        DiscoveryError::ApiError("No data in response".to_string())
-    })?;
+    let data = gh_response
+        .data
+        .ok_or_else(|| DiscoveryError::ApiError("No data in response".to_string()))?;
 
     // Parse search results
     let mut candidates = Vec::new();
-    
+
     if let Some(search_nodes) = data
         .get("search")
         .and_then(|s| s.get("nodes"))
@@ -196,9 +190,7 @@ pub async fn fetch_issue_and_linked_pr(
     repo_name: &str,
     issue_number: u32,
 ) -> Result<IssueWithPR, DiscoveryError> {
-    let client = Client::builder()
-        .timeout(REQUEST_TIMEOUT)
-        .build()?;
+    let client = Client::builder().timeout(REQUEST_TIMEOUT).build()?;
 
     // First, fetch the issue
     let issue_query = serde_json::json!({
@@ -256,9 +248,9 @@ pub async fn fetch_issue_and_linked_pr(
         return Err(DiscoveryError::ApiError(error_msg));
     }
 
-    let data = gh_response.data.ok_or_else(|| {
-        DiscoveryError::ApiError("No data in response".to_string())
-    })?;
+    let data = gh_response
+        .data
+        .ok_or_else(|| DiscoveryError::ApiError("No data in response".to_string()))?;
 
     parse_issue_with_pr(&data, repo_owner, repo_name, issue_number)
 }
@@ -359,9 +351,7 @@ fn parse_issue_with_pr(
 
     let issue = repo
         .get("issue")
-        .ok_or_else(|| {
-            DiscoveryError::ApiError(format!("Issue #{} not found", issue_number))
-        })?;
+        .ok_or_else(|| DiscoveryError::ApiError(format!("Issue #{} not found", issue_number)))?;
 
     let title = issue
         .get("title")

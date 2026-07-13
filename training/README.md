@@ -210,7 +210,7 @@ println!("Tokens used: {}", response.token_usage.prompt_tokens);
 **LLM Integration:**
 - Model: Claude Haiku (fast, cheap, good for code understanding)
 - API: Anthropic (requires `ANTHROPIC_API_KEY` env var)
-- Prompt: See `HAIKU_PREDICTION_PROMPT.md`
+- Prompt: See `../docs/reference/HAIKU_PREDICTION_PROMPT.md`
 
 **Cost & Performance:**
 - ~0.01 USD per prediction (Haiku pricing)
@@ -684,8 +684,8 @@ cargo run --release -- training metrics --days 30
 
 ## See Also
 
-- **[TRAINING_METHODOLOGY.md](../TRAINING_METHODOLOGY.md)** — High-level overview
-- **[TRAINING_VALIDATION.md](../TRAINING_VALIDATION.md)** — Metric calculations
-- **[TRAINING_DISCOVERY.md](../TRAINING_DISCOVERY.md)** — Discovery mechanics
+- **[TRAINING_METHODOLOGY.md](../docs/reference/TRAINING_METHODOLOGY.md)** — High-level overview
+- **[TRAINING_VALIDATION.md](../docs/reference/TRAINING_VALIDATION.md)** — Metric calculations
+- **[TRAINING_DISCOVERY.md](../docs/reference/TRAINING_DISCOVERY.md)** — Discovery mechanics
 - **[CONTRIBUTING_TO_TRAINING.md](../CONTRIBUTING_TO_TRAINING.md)** — Contribution guide
 - **[src/training/mod.rs](../src/training/mod.rs)** — Module exports

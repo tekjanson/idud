@@ -16,11 +16,15 @@ pub fn process_data(input: &str) -> Result<HashMap<String, String>, Box<dyn std:
 "#;
 
     let deps = ASTAnalyzer::analyze_file(Path::new("main.rs"), rust_code).unwrap();
-    
+
     assert!(!deps.is_empty());
-    assert!(deps.iter().any(|d| d.dep_type == "import" && d.to_uri.contains("std")));
-    assert!(deps.iter().any(|d| d.dep_type == "import" && d.to_uri.contains("serde")));
-    
+    assert!(deps
+        .iter()
+        .any(|d| d.dep_type == "import" && d.to_uri.contains("std")));
+    assert!(deps
+        .iter()
+        .any(|d| d.dep_type == "import" && d.to_uri.contains("serde")));
+
     // Verify confidence scores
     for dep in &deps {
         match dep.dep_type.as_str() {
@@ -52,9 +56,9 @@ export const MyComponent: React.FC = () => {
 "#;
 
     let deps = ASTAnalyzer::analyze_file(Path::new("component.tsx"), ts_code).unwrap();
-    
+
     assert!(!deps.is_empty());
-    
+
     let imports: Vec<_> = deps.iter().filter(|d| d.dep_type == "import").collect();
     assert!(!imports.is_empty());
     assert!(imports.iter().any(|d| d.to_uri.contains("react")));
@@ -82,9 +86,9 @@ class DataProcessor(object):
 "#;
 
     let deps = ASTAnalyzer::analyze_file(Path::new("processor.py"), py_code).unwrap();
-    
+
     assert!(!deps.is_empty());
-    
+
     let imports: Vec<_> = deps.iter().filter(|d| d.dep_type == "import").collect();
     assert!(!imports.is_empty());
     assert!(imports.iter().any(|d| d.to_uri == "os"));
@@ -97,11 +101,11 @@ fn test_confidence_scores_are_calibrated() {
     let rust_code = "use std::io;";
     let ts_code = "import { x } from 'module';";
     let py_code = "import os";
-    
+
     let rust_deps = ASTAnalyzer::analyze_file(Path::new("test.rs"), rust_code).unwrap();
     let ts_deps = ASTAnalyzer::analyze_file(Path::new("test.ts"), ts_code).unwrap();
     let py_deps = ASTAnalyzer::analyze_file(Path::new("test.py"), py_code).unwrap();
-    
+
     // All imports should have high confidence (0.95)
     for dep in rust_deps.iter().chain(ts_deps.iter()).chain(py_deps.iter()) {
         if dep.dep_type == "import" {

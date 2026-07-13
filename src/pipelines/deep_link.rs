@@ -90,37 +90,6 @@ impl InferenceClient for OllamaDispatcher {
     }
 }
 
-/// System prompt for contract discovery
-fn system_prompt() -> String {
-    r#"You are an expert code analyst tasked with discovering contractual bindings between code elements.
-
-Given a principal signatory and contextual information about other signatories, identify likely clauses (binding obligations) between them.
-
-Return ONLY valid JSON with this structure:
-{
-  "contracts": [
-    {
-      "guarantor_id": "signatory-xyz",
-      "clause_type": "Calls|Requires|Uses|Enslaves",
-      "confidence": 0.85,
-      "clause_reasoning": "Why this binding exists"
-    }
-  ]
-}
-
-Clause Types:
-- Calls: Principal directly invokes guarantor
-- Requires: Principal depends on guarantor to function
-- Uses: Principal utilizes guarantor capability
-- Enslaves: Principal changes force guarantor changes (high coupling)
-
-Guidelines:
-- confidence: 0.0-1.0 (how certain the binding exists)
-- Only return bindings with confidence > 0.7
-- Each binding is a contractual obligation"#
-        .to_string()
-}
-
 /// Build discovery prompt for a signatory
 fn discovery_prompt(principal: &Signatory, context: &[Signatory]) -> String {
     let mut prompt = format!(

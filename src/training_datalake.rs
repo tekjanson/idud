@@ -181,10 +181,8 @@ impl TrainingDataLake {
         let base_path = base_path.as_ref().to_path_buf();
 
         // Ensure all subdirectories exist
-        fs::create_dir_all(base_path.join("repos"))
-            .context("Failed to create repos directory")?;
-        fs::create_dir_all(base_path.join("runs"))
-            .context("Failed to create runs directory")?;
+        fs::create_dir_all(base_path.join("repos")).context("Failed to create repos directory")?;
+        fs::create_dir_all(base_path.join("runs")).context("Failed to create runs directory")?;
         fs::create_dir_all(base_path.join("metrics"))
             .context("Failed to create metrics directory")?;
 
@@ -197,8 +195,8 @@ impl TrainingDataLake {
         let filename = format!("{}.repo_metadata.json", metadata.name);
         let filepath = repos_dir.join(&filename);
 
-        let json = serde_json::to_string_pretty(metadata)
-            .context("Failed to serialize repo metadata")?;
+        let json =
+            serde_json::to_string_pretty(metadata).context("Failed to serialize repo metadata")?;
         fs::write(&filepath, json).context("Failed to write repo metadata file")?;
 
         Ok(filepath)
@@ -209,8 +207,7 @@ impl TrainingDataLake {
         let path = path.as_ref();
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read repo metadata from {:?}", path))?;
-        serde_json::from_str(&content)
-            .context("Failed to deserialize repo metadata")
+        serde_json::from_str(&content).context("Failed to deserialize repo metadata")
     }
 
     /// List all repository metadata files in datalake.
@@ -241,8 +238,7 @@ impl TrainingDataLake {
         let filename = format!("{}.training_run.json", run.run_id);
         let filepath = runs_dir.join(&filename);
 
-        let json = serde_json::to_string_pretty(run)
-            .context("Failed to serialize training run")?;
+        let json = serde_json::to_string_pretty(run).context("Failed to serialize training run")?;
         fs::write(&filepath, json).context("Failed to write training run file")?;
 
         Ok(filepath)
@@ -253,8 +249,7 @@ impl TrainingDataLake {
         let path = path.as_ref();
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read training run from {:?}", path))?;
-        serde_json::from_str(&content)
-            .context("Failed to deserialize training run")
+        serde_json::from_str(&content).context("Failed to deserialize training run")
     }
 
     /// List all training runs in datalake.
@@ -287,8 +282,7 @@ impl TrainingDataLake {
 
         let json = serde_json::to_string_pretty(metrics)
             .context("Failed to serialize aggregated metrics")?;
-        fs::write(&filepath, json)
-            .context("Failed to write aggregated metrics file")?;
+        fs::write(&filepath, json).context("Failed to write aggregated metrics file")?;
 
         Ok(filepath)
     }
@@ -298,8 +292,7 @@ impl TrainingDataLake {
         let path = path.as_ref();
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read aggregated metrics from {:?}", path))?;
-        serde_json::from_str(&content)
-            .context("Failed to deserialize aggregated metrics")
+        serde_json::from_str(&content).context("Failed to deserialize aggregated metrics")
     }
 
     /// List all aggregated metrics files in datalake.
@@ -342,10 +335,7 @@ mod tests {
             "src/lib.rs".to_string(),
             "src/utils.rs".to_string(),
         ];
-        let actual = vec![
-            "src/main.rs".to_string(),
-            "src/lib.rs".to_string(),
-        ];
+        let actual = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
 
         let run = TrainingRun::new(
             "https://github.com/test/repo".to_string(),

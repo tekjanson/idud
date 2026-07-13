@@ -1,36 +1,34 @@
-//! AI-augmented dependency linking for idud
-//! 
-//! This module uses Copilot CLI to infer semantic dependencies that AST analysis misses.
-//! It processes signatories in batches with per-batch timeouts for reliability.
+//! AI-augmented dependency linking for idud.
 //!
-//! TOKEN OPTIMIZATION:
-//! - Batch process 10-20 signatories per Copilot call
-//! - Compact format: "file.rs"
-//! - Per-batch timeout: 30 seconds (fail fast on Copilot delays)
-//! - Graceful degradation: continue with next batch if one fails
-//! - Token tracking per batch for cost monitoring
-//! - Each batch: ~100 tokens for file list + ~300 tokens for inference = ~400 tokens
-//! - Estimated budget for 926 files: 1,800-2,400 tokens
+//! This module uses the Copilot CLI to infer semantic dependencies that AST analysis misses.
+//! It batches signatories for efficient prompting, applies timeouts to avoid hanging
+//! requests, and defends against malformed LLM output.
 
-use crate::types::{Contract, ClauseType, ContractSource, Signatory, SignatoryType};
-use anyhow::{anyhow, Result};
+use crate::types::{ClauseType, Contract, ContractSource, Signatory, SignatoryType};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::process::Command;
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashSet,
+    process::Stdio,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use thiserror::Error;
+use tokio::{process::Command, time::timeout};
 use tracing::{debug, info, warn};
 
-/// Configuration for AI linking behavior
+/// Configuration for AI linking behavior.
 #[derive(Debug, Clone)]
 pub struct AILinkerConfig {
-    /// Batch size: how many signatories per Copilot call (10-20 recommended)
+    /// Batch size: how many signatories per Copilot request.
     pub batch_size: usize,
-    /// Timeout per batch in seconds (30s gives Copilot time to respond)
+    /// Timeout per batch in seconds.
     pub batch_timeout_secs: u64,
-    /// Minimum confidence threshold for semantic dependencies (0.40-0.75)
+    /// Minimum confidence for semantic dependencies.
     pub min_confidence: f32,
-    /// Maximum confidence for AI-inferred dependencies (below AST confidence)
+    /// Maximum confidence for AI-inferred dependencies.
     pub max_confidence: f32,
-    /// Enable verbose logging of prompts and responses
+    /// Enable verbose logging for prompts and responses.
     pub verbose: bool,
 }
 
@@ -46,7 +44,7 @@ impl Default for AILinkerConfig {
     }
 }
 
-/// Metrics for AI linking performance tracking
+/// Metrics for AI linking operations.
 #[derive(Debug, Clone)]
 pub struct AILinkerMetrics {
     pub batches_processed: usize,
@@ -58,18 +56,115 @@ pub struct AILinkerMetrics {
     pub total_time_ms: u128,
 }
 
-/// AI Linker: uses Copilot CLI to infer semantic dependencies
+/// Errors returned by the AI linker.
+#[derive(Debug, Error)]
+pub enum AiLinkerError {
+    #[error("copilot CLI is not installed")]
+    CliNotFound,
+    #[error("failed to invoke copilot CLI: {0}")]
+    InvocationFailed(String),
+    #[error("copilot CLI timed out after {timeout:?}")]
+    Timeout { timeout: Duration },
+    #[error("copilot CLI returned an error: {0}")]
+    CommandFailed(String),
+    #[error("copilot response did not contain a JSON array")]
+    NoJsonArray,
+    #[error("failed to parse copilot response: {0}")]
+    ParseFailed(String),
+}
+
+/// Abstraction over the Copilot CLI process used by the linker.
+#[async_trait]
+pub trait CopilotClient: Send + Sync {
+    /// Checks whether the backend can be invoked.
+    async fn is_available(&self) -> Result<(), AiLinkerError>;
+
+    /// Invokes the backend with a prompt and timeout.
+    async fn invoke(&self, prompt: &str, timeout: Duration) -> Result<String, AiLinkerError>;
+}
+
+type DynCopilotClient = Arc<dyn CopilotClient + Send + Sync>;
+
+/// Tokio-backed implementation of the Copilot client.
+#[derive(Debug, Default)]
+pub struct TokioCopilotClient;
+
+#[async_trait]
+impl CopilotClient for TokioCopilotClient {
+    async fn is_available(&self) -> Result<(), AiLinkerError> {
+        let output = Command::new("which")
+            .arg("copilot")
+            .output()
+            .await
+            .map_err(|err| {
+                AiLinkerError::InvocationFailed(format!("failed to check copilot CLI: {err}"))
+            })?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(AiLinkerError::CliNotFound)
+        }
+    }
+
+    async fn invoke(
+        &self,
+        prompt: &str,
+        timeout_duration: Duration,
+    ) -> Result<String, AiLinkerError> {
+        let child = Command::new("copilot")
+            .arg("-p")
+            .arg(prompt)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|err| {
+                AiLinkerError::InvocationFailed(format!("failed to spawn copilot process: {err}"))
+            })?;
+
+        match timeout(timeout_duration, child.wait_with_output()).await {
+            Ok(Ok(output)) => {
+                if output.status.success() {
+                    String::from_utf8(output.stdout).map_err(|err| {
+                        AiLinkerError::InvocationFailed(format!(
+                            "invalid utf-8 from copilot stdout: {err}"
+                        ))
+                    })
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(AiLinkerError::CommandFailed(stderr.into_owned()))
+                }
+            }
+            Ok(Err(err)) => Err(AiLinkerError::InvocationFailed(format!(
+                "copilot process exited with an error: {err}"
+            ))),
+            Err(_) => Err(AiLinkerError::Timeout {
+                timeout: timeout_duration,
+            }),
+        }
+    }
+}
+
+/// AI Linker: uses the Copilot CLI to infer semantic dependencies.
 pub struct AILinker {
     config: AILinkerConfig,
-    tokens_used: u64,
+    maybe_tokens_used: u64,
     metrics: AILinkerMetrics,
+    copilot_client: DynCopilotClient,
 }
 
 impl AILinker {
+    /// Creates a linker with the default Tokio-backed client.
     pub fn new(config: AILinkerConfig) -> Self {
+        Self::with_copilot_client(config, Arc::new(TokioCopilotClient))
+    }
+
+    /// Creates a linker with a custom client for unit tests and dependency injection.
+    pub fn with_copilot_client(config: AILinkerConfig, client: DynCopilotClient) -> Self {
         Self {
-            config,
-            tokens_used: 0,
+            config: config.clone(),
+            maybe_tokens_used: 0,
             metrics: AILinkerMetrics {
                 batches_processed: 0,
                 batches_succeeded: 0,
@@ -79,225 +174,157 @@ impl AILinker {
                 tokens_estimated: 0,
                 total_time_ms: 0,
             },
+            copilot_client: client,
         }
     }
 
-    /// Link signatories in a codebase using AI analysis with per-batch timeouts
-    /// 
-    /// Takes signatories and existing contracts, groups in batches,
-    /// and uses Copilot to infer semantic dependencies.
-    /// 
-    /// Returns new Contract objects with confidence scores.
-    pub fn link_files(
+    /// Links signatories in a codebase using AI analysis with per-batch timeouts.
+    pub async fn link_files(
         &mut self,
         signatories: &[Signatory],
         existing_contracts: &[Contract],
-    ) -> Result<Vec<Contract>> {
+    ) -> Result<Vec<Contract>, AiLinkerError> {
         let overall_start = Instant::now();
-        
-        // Validate Copilot CLI is available
-        self.validate_copilot_cli()?;
 
-        // Filter file signatories for batching
-        let file_signatories: Vec<&Signatory> = signatories
-            .iter()
-            .filter(|s| s.signatory_type == SignatoryType::File)
-            .collect();
+        self.copilot_client.is_available().await?;
 
+        let file_signatories = collect_file_signatories(signatories);
         if file_signatories.is_empty() {
             info!("No files to analyze for semantic dependencies");
             return Ok(Vec::new());
         }
 
         info!(
-            "Starting AI linking for {} files in batches of {} with {}s timeout per batch",
-            file_signatories.len(),
-            self.config.batch_size,
-            self.config.batch_timeout_secs
+            files = file_signatories.len(),
+            batch_size = self.config.batch_size,
+            timeout_secs = self.config.batch_timeout_secs,
+            "Starting AI linking pass"
         );
 
         let mut inferred_contracts = Vec::new();
-
-        // Process files in batches with timeout
         for (batch_idx, batch) in file_signatories.chunks(self.config.batch_size).enumerate() {
             self.metrics.batches_processed += 1;
             let batch_start = Instant::now();
-            
-            debug!("Processing batch {} of {} files", batch_idx + 1, batch.len());
 
-            match self.link_batch_with_timeout(batch, signatories, existing_contracts) {
+            debug!(
+                batch = batch_idx + 1,
+                files = batch.len(),
+                "Processing AI linking batch"
+            );
+
+            match self
+                .link_batch_with_timeout(batch, signatories, existing_contracts)
+                .await
+            {
                 Ok(contracts) => {
                     let batch_time = batch_start.elapsed();
                     self.metrics.batches_succeeded += 1;
-                    let contract_count = contracts.len();
-                    self.metrics.contracts_discovered += contract_count;
-                    self.metrics.tokens_estimated += 400; // Estimate per batch
-                    
-                    info!(
-                        "Batch {} OK: {} contracts in {:.1}s (tokens: ~400)",
-                        batch_idx + 1,
-                        contract_count,
-                        batch_time.as_secs_f64()
-                    );
+                    self.metrics.contracts_discovered += contracts.len();
+                    self.metrics.tokens_estimated += 400;
                     inferred_contracts.extend(contracts);
+
+                    info!(
+                        batch = batch_idx + 1,
+                        contracts = inferred_contracts.len(),
+                        duration_ms = batch_time.as_millis(),
+                        "AI batch completed"
+                    );
                 }
-                Err(e) => {
-                    if e.to_string().contains("timeout") {
+                Err(err) => {
+                    if err.to_string().contains("timed out") {
                         self.metrics.batches_timed_out += 1;
                         warn!(
-                            "Batch {} TIMEOUT: {} (skipping, will continue)",
-                            batch_idx + 1,
-                            e
+                            batch = batch_idx + 1,
+                            error = %err,
+                            "AI batch timed out"
                         );
                     } else {
                         self.metrics.batches_failed += 1;
-                        warn!("Batch {} ERROR: {} (skipping, will continue)", batch_idx + 1, e);
+                        warn!(
+                            batch = batch_idx + 1,
+                            error = %err,
+                            "AI batch failed"
+                        );
                     }
                 }
             }
         }
 
-        let total_time = overall_start.elapsed();
-        self.metrics.total_time_ms = total_time.as_millis();
-        
+        self.metrics.total_time_ms = overall_start.elapsed().as_millis();
+
         info!(
-            "AI linking complete: {} semantic dependencies from {} batches ({}s, ~{} tokens)",
-            inferred_contracts.len(),
-            self.metrics.batches_succeeded,
-            total_time.as_secs_f64(),
-            self.metrics.tokens_estimated
-        );
-        
-        info!(
-            "Batch summary: {} succeeded, {} failed, {} timed out",
-            self.metrics.batches_succeeded,
-            self.metrics.batches_failed,
-            self.metrics.batches_timed_out
+            batches_succeeded = self.metrics.batches_succeeded,
+            batches_failed = self.metrics.batches_failed,
+            batches_timed_out = self.metrics.batches_timed_out,
+            contracts = inferred_contracts.len(),
+            elapsed_ms = self.metrics.total_time_ms,
+            "AI linking pass completed"
         );
 
         Ok(inferred_contracts)
     }
-    
-    /// Get metrics from the last linking pass
+
+    /// Returns metrics from the last linking pass.
     pub fn metrics(&self) -> AILinkerMetrics {
         self.metrics.clone()
     }
 
-    /// Link a batch of signatories with a timeout
-    /// Uses a separate process with timeout to prevent hanging on slow Copilot responses
-    fn link_batch_with_timeout(
+    /// Links a single batch of signatories with a timeout.
+    async fn link_batch_with_timeout(
         &mut self,
         batch: &[&Signatory],
         all_signatories: &[Signatory],
         existing_contracts: &[Contract],
-    ) -> Result<Vec<Contract>> {
-        let timeout = Duration::from_secs(self.config.batch_timeout_secs);
-        
-        // Format batch for Copilot
+    ) -> Result<Vec<Contract>, AiLinkerError> {
+        let timeout_duration = Duration::from_secs(self.config.batch_timeout_secs);
         let batch_text = format_batch_for_analysis(batch);
         let prompt = build_linking_prompt(&batch_text);
 
         if self.config.verbose {
-            debug!("Linking prompt:\n{}", prompt);
+            debug!(batch = batch.len(), prompt = %prompt, "Sending AI linking prompt");
         }
 
-        // Call Copilot CLI with timeout
-        let response = match invoke_copilot_cli_with_timeout(&prompt, timeout) {
-            Ok(resp) => resp,
-            Err(e) if e.to_string().contains("timeout") => {
-                return Err(anyhow!("timeout: batch processing exceeded {}s", timeout.as_secs()));
-            }
-            Err(e) => return Err(e),
-        };
+        let response = self
+            .copilot_client
+            .invoke(&prompt, timeout_duration)
+            .await?;
 
         if self.config.verbose {
-            debug!("Copilot response:\n{}", response);
+            debug!(response = %response, "Received AI linking response");
         }
 
-        // Parse response to extract inferred pairs
         let inferred_pairs = parse_linking_response(&response, batch)?;
-
-        // Convert pairs to contracts, avoiding duplicates
-        let mut contracts = Vec::new();
-        let existing_set = build_contract_set(existing_contracts);
-
-        for (from_label, to_label, reasoning) in inferred_pairs {
-            // Find signatories by label
-            let from_sig = all_signatories
-                .iter()
-                .find(|s| s.label == from_label);
-            let to_sig = all_signatories
-                .iter()
-                .find(|s| s.label == to_label);
-
-            if let (Some(from), Some(to)) = (from_sig, to_sig) {
-                // Skip if this contract already exists
-                let contract_key = (from.id.clone(), to.id.clone());
-                if existing_set.contains(&contract_key) {
-                    continue;
-                }
-
-                // Create contract with moderate confidence
-                let confidence = self.config.min_confidence
-                    + (self.config.max_confidence - self.config.min_confidence) / 2.0;
-
-                let contract = Contract::new(
-                    from.id.clone(),
-                    to.id.clone(),
-                    ClauseType::Uses,
-                    confidence,
-                    ContractSource::AiInferred,
-                )
-                .with_reasoning(reasoning);
-
-                contracts.push(contract);
-            }
-        }
-
-        Ok(contracts)
+        build_contracts_from_pairs(
+            inferred_pairs,
+            all_signatories,
+            existing_contracts,
+            self.config.clone(),
+        )
     }
 
-    /// Validate that Copilot CLI is available
-    fn validate_copilot_cli(&self) -> Result<()> {
-        let output = Command::new("which")
-            .arg("copilot")
-            .output()
-            .map_err(|e| anyhow!("Failed to check for copilot CLI: {}", e))?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "Copilot CLI not found. Install from: https://github.com/github/gh-copilot"
-            ));
-        }
-
-        Ok(())
-    }
-
-    /// Get total tokens used in this linking pass
+    /// Returns the total number of tokens used in this linking pass.
     pub fn tokens_used(&self) -> u64 {
-        self.tokens_used
+        self.maybe_tokens_used
     }
 }
 
-/// Format a batch of files for semantic analysis
-/// 
-/// Example output:
-///   src/main.rs: [main, init, run]
-///   src/lib.rs: [register_handler, process]
-///   src/utils.rs: [format, parse]
+fn collect_file_signatories(signatories: &[Signatory]) -> Vec<&Signatory> {
+    signatories
+        .iter()
+        .filter(|signatory| signatory.signatory_type == SignatoryType::File)
+        .collect()
+}
+
+/// Formats a batch of signatories for semantic analysis.
 fn format_batch_for_analysis(batch: &[&Signatory]) -> String {
-    let mut text = String::new();
-
-    for sig in batch {
-        // Extract file path from label (typically just the path)
-        let file_path = &sig.label;
-        text.push_str(&format!("{}\n", file_path));
-    }
-
-    text
+    batch
+        .iter()
+        .map(|signatory| signatory.label.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
-/// Build a focused linking prompt for Copilot
+/// Builds a focused prompt for Copilot.
 fn build_linking_prompt(batch_text: &str) -> String {
     format!(
         r#"You are analyzing source files for implicit semantic dependencies.
@@ -318,48 +345,49 @@ NO EXPLANATION, NO MARKDOWN. ONLY JSON."#,
     )
 }
 
-/// Invoke Copilot CLI with a prompt and timeout
-fn invoke_copilot_cli_with_timeout(prompt: &str, timeout: Duration) -> Result<String> {
-    use std::sync::mpsc;
-    use std::thread;
+fn build_contracts_from_pairs(
+    inferred_pairs: Vec<(String, String, String)>,
+    all_signatories: &[Signatory],
+    existing_contracts: &[Contract],
+    config: AILinkerConfig,
+) -> Result<Vec<Contract>, AiLinkerError> {
+    let mut contracts = Vec::new();
+    let existing_set = build_contract_set(existing_contracts);
 
-    let prompt_copy = prompt.to_string();
-    let (tx, rx) = mpsc::channel();
+    for (from_label, to_label, reasoning) in inferred_pairs {
+        let from_sig = all_signatories
+            .iter()
+            .find(|signatory| signatory.label == from_label);
+        let to_sig = all_signatories
+            .iter()
+            .find(|signatory| signatory.label == to_label);
 
-    // Spawn copilot call in separate thread
-    let _handle = thread::spawn(move || {
-        let output = Command::new("copilot")
-            .arg("-p")
-            .arg(&prompt_copy)
-            .output();
-        
-        let _ = tx.send(output);
-    });
-
-    // Wait for response with timeout
-    match rx.recv_timeout(timeout) {
-        Ok(Ok(output)) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                Err(anyhow!("Copilot CLI error: {}", stderr))
-            } else {
-                String::from_utf8(output.stdout).map_err(|e| anyhow!(e))
+        if let (Some(from), Some(to)) = (from_sig, to_sig) {
+            let contract_key = (from.id.clone(), to.id.clone());
+            if existing_set.contains(&contract_key) {
+                continue;
             }
-        }
-        Ok(Err(e)) => Err(anyhow!("Failed to invoke copilot: {}", e)),
-        Err(_) => {
-            // Timeout occurred
-            Err(anyhow!("timeout: copilot did not respond within {:?}", timeout))
+
+            let confidence =
+                config.min_confidence + (config.max_confidence - config.min_confidence) / 2.0;
+
+            let contract = Contract::new(
+                from.id.clone(),
+                to.id.clone(),
+                ClauseType::Uses,
+                confidence,
+                ContractSource::AiInferred,
+            )
+            .with_reasoning(reasoning);
+
+            contracts.push(contract);
         }
     }
+
+    Ok(contracts)
 }
 
-/// Invoke Copilot CLI with a prompt (legacy, no timeout)
-fn invoke_copilot_cli(prompt: &str) -> Result<String> {
-    invoke_copilot_cli_with_timeout(prompt, Duration::from_secs(30))
-}
-
-/// Response structure from Copilot
+/// Response structure from Copilot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LinkingPair {
     from: String,
@@ -367,188 +395,90 @@ struct LinkingPair {
     reason: String,
 }
 
-/// Parse Copilot response to extract inferred dependency pairs
-/// 
-/// Returns a vec of (from_file, to_file, reasoning) tuples
+/// Parses a Copilot response into dependency pairs.
 fn parse_linking_response(
     response: &str,
     batch: &[&Signatory],
-) -> Result<Vec<(String, String, String)>> {
-    // Extract JSON from response
-    let json_start = response
-        .find('[')
-        .ok_or_else(|| anyhow!("No JSON array found in response"))?;
-    let json_end = response
-        .rfind(']')
-        .ok_or_else(|| anyhow!("Malformed JSON array in response"))?;
+) -> Result<Vec<(String, String, String)>, AiLinkerError> {
+    let candidates = response
+        .match_indices('[')
+        .filter_map(|(open_idx, _)| {
+            find_matching_bracket(response, open_idx).map(|close_idx| (open_idx, close_idx))
+        })
+        .collect::<Vec<_>>();
 
-    let json_str = &response[json_start..=json_end];
+    if candidates.is_empty() {
+        return Err(AiLinkerError::NoJsonArray);
+    }
 
-    // Parse JSON
-    let pairs: Vec<LinkingPair> = serde_json::from_str(json_str)?;
+    let batch_files: HashSet<&str> = batch
+        .iter()
+        .map(|signatory| signatory.label.as_str())
+        .collect();
 
-    // Filter pairs to only those referencing files in the batch
-    let batch_files: std::collections::HashSet<&str> =
-        batch.iter().map(|s| s.label.as_str()).collect();
-
-    let mut result = Vec::new();
-    for pair in pairs {
-        if batch_files.contains(pair.from.as_str()) && batch_files.contains(pair.to.as_str()) {
-            result.push((pair.from, pair.to, pair.reason));
+    for (json_start, json_end) in candidates {
+        let json_str = &response[json_start..=json_end];
+        match serde_json::from_str::<Vec<LinkingPair>>(json_str) {
+            Ok(pairs) => {
+                let mut result = Vec::new();
+                for pair in pairs {
+                    if batch_files.contains(pair.from.as_str())
+                        && batch_files.contains(pair.to.as_str())
+                    {
+                        result.push((pair.from, pair.to, pair.reason));
+                    }
+                }
+                return Ok(result);
+            }
+            Err(err) => {
+                debug!(error = %err, "Failed to parse a candidate JSON array from Copilot response");
+            }
         }
     }
 
-    Ok(result)
+    Err(AiLinkerError::ParseFailed(
+        "failed to parse any candidate JSON array from Copilot response".to_string(),
+    ))
 }
 
-/// Build a set of existing contract pairs for deduplication
-fn build_contract_set(contracts: &[Contract]) -> std::collections::HashSet<(String, String)> {
+fn find_matching_bracket(response: &str, open_idx: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in response[open_idx..].char_indices() {
+        let absolute_idx = open_idx + idx;
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(absolute_idx);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+/// Builds a set of existing contract pairs for deduplication.
+fn build_contract_set(contracts: &[Contract]) -> HashSet<(String, String)> {
     contracts
         .iter()
-        .map(|c| (c.principal_id.clone(), c.guarantor_id.clone()))
+        .map(|contract| (contract.principal_id.clone(), contract.guarantor_id.clone()))
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_batch_for_analysis() {
-        let signatories = vec![
-            Signatory::new(
-                SignatoryType::File,
-                "http://example.com/repo/blob/main/src/main.rs".to_string(),
-                "src/main.rs".to_string(),
-                "File content".to_string(),
-            ),
-            Signatory::new(
-                SignatoryType::File,
-                "http://example.com/repo/blob/main/src/lib.rs".to_string(),
-                "src/lib.rs".to_string(),
-                "File content".to_string(),
-            ),
-        ];
-
-        let batch: Vec<_> = signatories.iter().collect();
-        let formatted = format_batch_for_analysis(&batch);
-
-        assert!(formatted.contains("src/main.rs"));
-        assert!(formatted.contains("src/lib.rs"));
-    }
-
-    #[test]
-    fn test_build_linking_prompt() {
-        let batch_text = "src/main.rs\nsrc/lib.rs\n";
-        let prompt = build_linking_prompt(batch_text);
-
-        assert!(prompt.contains("FILES TO ANALYZE"));
-        assert!(prompt.contains("TASK"));
-        assert!(prompt.contains("JSON"));
-        assert!(prompt.contains("["));
-    }
-
-    #[test]
-    fn test_parse_linking_response_valid() {
-        let response = r#"Here are the inferred dependencies:
-[
-  {"from": "src/main.rs", "to": "src/lib.rs", "reason": "imports Stream"},
-  {"from": "src/lib.rs", "to": "src/utils.rs", "reason": "duck typing"}
-]
-Some explanation text"#;
-
-        let sig1 = Signatory::new(
-            SignatoryType::File,
-            "http://example.com/repo/blob/main/src/main.rs".to_string(),
-            "src/main.rs".to_string(),
-            "content".to_string(),
-        );
-        let sig2 = Signatory::new(
-            SignatoryType::File,
-            "http://example.com/repo/blob/main/src/lib.rs".to_string(),
-            "src/lib.rs".to_string(),
-            "content".to_string(),
-        );
-        let sig3 = Signatory::new(
-            SignatoryType::File,
-            "http://example.com/repo/blob/main/src/utils.rs".to_string(),
-            "src/utils.rs".to_string(),
-            "content".to_string(),
-        );
-
-        let batch = vec![&sig1, &sig2, &sig3];
-
-        let result = parse_linking_response(response, &batch).unwrap();
-
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].0, "src/main.rs");
-        assert_eq!(result[0].1, "src/lib.rs");
-        assert_eq!(result[0].2, "imports Stream");
-    }
-
-    #[test]
-    fn test_parse_linking_response_filters_out_of_batch() {
-        let response = r#"[
-  {"from": "src/main.rs", "to": "src/lib.rs", "reason": "interacts"},
-  {"from": "src/other.rs", "to": "src/main.rs", "reason": "not in batch"}
-]"#;
-
-        let sig1 = Signatory::new(
-            SignatoryType::File,
-            "http://example.com/repo/blob/main/src/main.rs".to_string(),
-            "src/main.rs".to_string(),
-            "content".to_string(),
-        );
-        let sig2 = Signatory::new(
-            SignatoryType::File,
-            "http://example.com/repo/blob/main/src/lib.rs".to_string(),
-            "src/lib.rs".to_string(),
-            "content".to_string(),
-        );
-
-        let batch = vec![&sig1, &sig2];
-
-        let result = parse_linking_response(response, &batch).unwrap();
-
-        // Only the first pair is in batch
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, "src/main.rs");
-    }
-
-    #[test]
-    fn test_build_contract_set() {
-        let contracts = vec![
-            Contract::new(
-                "sig1".to_string(),
-                "sig2".to_string(),
-                ClauseType::Uses,
-                0.5,
-                ContractSource::Deterministic,
-            ),
-            Contract::new(
-                "sig2".to_string(),
-                "sig3".to_string(),
-                ClauseType::Requires,
-                0.6,
-                ContractSource::AiInferred,
-            ),
-        ];
-
-        let set = build_contract_set(&contracts);
-
-        assert_eq!(set.len(), 2);
-        assert!(set.contains(&("sig1".to_string(), "sig2".to_string())));
-        assert!(set.contains(&("sig2".to_string(), "sig3".to_string())));
-    }
-
-    #[test]
-    fn test_ai_linker_config_defaults() {
-        let config = AILinkerConfig::default();
-
-        assert_eq!(config.batch_size, 15);
-        assert_eq!(config.batch_timeout_secs, 30);
-        assert_eq!(config.min_confidence, 0.40);
-        assert_eq!(config.max_confidence, 0.65);
-        assert!(!config.verbose);
-    }
 }

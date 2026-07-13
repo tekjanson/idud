@@ -449,7 +449,7 @@ fn uat_translator_converts_calls_to_sentence() {
     assert!(sentence.full_sentence.contains("fetchUser"));
     assert!(sentence.full_sentence.contains("calls"));
     assert!(sentence.full_sentence.contains("parseJSON"));
-    
+
     // Verify confidence is preserved
     assert_eq!(sentence.confidence, 0.92);
 }

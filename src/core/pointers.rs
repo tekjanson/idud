@@ -33,7 +33,11 @@ pub enum GraphPointerKind {
 
 impl GraphPointer {
     /// Create a pointer from a structural digest.
-    pub fn from_digest(path: impl AsRef<Path>, kind: impl Into<String>, structural_digest: &str) -> Self {
+    pub fn from_digest(
+        path: impl AsRef<Path>,
+        kind: impl Into<String>,
+        structural_digest: &str,
+    ) -> Self {
         let path = path.as_ref().to_path_buf();
         let kind = kind.into();
         let seed = format!("{}:{}:{}", kind, path.display(), structural_digest);
@@ -50,12 +54,18 @@ impl GraphPointer {
     /// Create a pointer for a file-level root artifact.
     pub fn file(path: impl AsRef<Path>) -> Self {
         let path = path.as_ref();
-        let hash = blake3::hash(path.to_string_lossy().as_bytes()).to_hex().to_string();
+        let hash = blake3::hash(path.to_string_lossy().as_bytes())
+            .to_hex()
+            .to_string();
         Self {
             hash: hash.clone(),
             source_path: path.to_path_buf(),
             kind: "file".to_string(),
-            label: path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            label: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
         }
     }
 }

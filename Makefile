@@ -1,4 +1,4 @@
-.PHONY: idud idud-grow datalake-grow datalake-status build test clean help lint fmt check-format cache-status preflight
+.PHONY: idud idud-grow datalake-grow datalake-status build test clean help lint fmt check-format cache-status preflight quality-gates install-hooks
 
 # Default target
 .DEFAULT_GOAL := help
@@ -67,6 +67,17 @@ idud-grow: preflight
 ## preflight - Run pre-flight validation checks
 preflight:
 	@bash scripts/preflight.sh
+
+## quality-gates - Run formatting, linting, hygiene, and functional tests
+quality-gates:
+	@bash scripts/run-quality-gates.sh
+
+## install-hooks - Install the local git pre-commit hook for quality enforcement
+install-hooks:
+	@mkdir -p .git/hooks
+	@ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Installed pre-commit hook"
 
 ## datalake-grow - Grow datalake by ingesting repositories from registry
 datalake-grow: build
@@ -170,7 +181,7 @@ help:
 	@grep -E "^## [a-z-]+" Makefile | sed 's/## /  /' | sed 's/ -//' | awk '{printf "  $(GREEN)%-20s$(RESET) %s\n", $$1, substr($$0, index($$0,$$2))}'
 	@echo ""
 	@echo "$(BOLD)UTILITY TARGETS:$(RESET)"
-	@grep -E "^## (build|test|lint|fmt|check-format|clean|cache-status|datalake-status|preflight)" Makefile | sed 's/## /  /' | sed 's/ -//' | awk '{printf "  $(GREEN)%-20s$(RESET) %s\n", $$1, substr($$0, index($$0,$$2))}'
+	@grep -E "^## (build|test|lint|fmt|check-format|clean|cache-status|datalake-status|preflight|quality-gates|install-hooks)" Makefile | sed 's/## /  /' | sed 's/ -//' | awk '{printf "  $(GREEN)%-20s$(RESET) %s\n", $$1, substr($$0, index($$0,$$2))}'
 	@echo ""
 	@echo "$(BOLD)REQUIREMENTS:$(RESET)"
 	@echo "  $(YELLOW)Copilot CLI$(RESET)              - Install from: https://github.com/github/gh-copilot"

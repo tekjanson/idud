@@ -1,6 +1,6 @@
 //! AI prediction engine using Copilot CLI
 //! Predicts which files need to change based on issue description and dependency graph
-//! 
+//!
 //! TOKEN OPTIMIZATION:
 //! - Compact graph representation (single line per file)
 //! - Minimal system prompt (just the JSON output format)
@@ -35,7 +35,7 @@ pub struct TokenUsage {
 
 /// Predicts which files need to change based on issue and dependency graph
 /// Uses Copilot CLI to invoke Claude and analyze the issue in context of the code dependency graph
-/// 
+///
 /// TOKEN OPTIMIZATION: Compact graph format + minimal prompt = ~90% token savings
 pub async fn predict_files_from_issue(
     request: PredictionRequest,
@@ -44,10 +44,14 @@ pub async fn predict_files_from_issue(
     // Validate that copilot CLI is available
     let which_result = Command::new("which").arg("copilot").output();
     if which_result.is_err() || !which_result?.status.success() {
-        return Err("Copilot CLI not found in PATH. Install from: https://github.com/github/gh-copilot".into());
+        return Err(
+            "Copilot CLI not found in PATH. Install from: https://github.com/github/gh-copilot"
+                .into(),
+        );
     }
 
-    let graph_text = format_graph_for_context_compact(&request.signatories, &request.dependency_graph);
+    let graph_text =
+        format_graph_for_context_compact(&request.signatories, &request.dependency_graph);
     let system_prompt = build_system_prompt_minimal();
 
     let user_message = format!(
@@ -87,11 +91,11 @@ pub async fn predict_files_from_issue(
 
 /// Format the dependency graph into COMPACT representation for token efficiency
 /// Instead of verbose line-by-line format, uses: "file.rs -> [dep1, dep2]"
-/// 
+///
 /// Example output:
 ///   src/main.rs -> [src/lib.rs, src/utils.rs]
 ///   src/lib.rs -> []
-/// 
+///
 /// This reduces token usage by ~95% vs verbose format (600M tokens saved at scale)
 fn format_graph_for_context_compact(signatories: &[Signatory], contracts: &[Contract]) -> String {
     let mut graph_text = String::new();

@@ -1,28 +1,28 @@
 //! Contract Merger: combines AST and AI dependency analysis results
-//! 
+//!
 //! Merges dependencies from multiple analysis sources, deduplicates contracts,
 //! and assigns confidence scores based on analysis method reliability.
 
-use crate::types::{Contract, ContractSource, Signatory, ClauseType};
 use crate::analysis::ast_analyzer::Dependency;
+use crate::types::{ClauseType, Contract, ContractSource, Signatory};
 use std::collections::{HashMap, HashSet};
 
 pub struct ContractMerger;
 
 impl ContractMerger {
     /// Merge dependencies from AST and AI analysis into deduplicated contracts
-    /// 
+    ///
     /// Strategy:
     /// - AST deps get higher confidence (0.90-0.95)
     /// - AI contracts get lower confidence (0.40-0.70)
     /// - If same (from_uri, to_uri) pair exists in both, keep AST version
     /// - Convert Dependency → Contract using signatory URIs
-    /// 
+    ///
     /// # Arguments
     /// * `ast_deps` - Dependencies from AST analysis
     /// * `ai_contracts` - Contracts from AILinker
     /// * `signatories` - Signatories to map URIs to IDs
-    /// 
+    ///
     /// # Returns
     /// Vec of deduplicated Contracts
     pub fn merge_dependencies(
@@ -42,7 +42,9 @@ impl ContractMerger {
 
         // Process AST dependencies first (higher confidence, take precedence)
         for dep in ast_deps {
-            if let (Some(from_id), Some(to_id)) = (uri_to_id.get(&dep.from_uri), uri_to_id.get(&dep.to_uri)) {
+            if let (Some(from_id), Some(to_id)) =
+                (uri_to_id.get(&dep.from_uri), uri_to_id.get(&dep.to_uri))
+            {
                 let pair_key = (from_id.clone(), to_id.clone());
                 ast_set.insert(pair_key.clone());
 
@@ -57,7 +59,7 @@ impl ContractMerger {
 
                 // Assign high confidence to AST deps
                 let confidence = 0.90 + (dep.confidence * 0.05).min(0.05);
-                
+
                 let contract = Contract::new(
                     from_id.clone(),
                     to_id.clone(),
@@ -73,7 +75,10 @@ impl ContractMerger {
 
         // Process AI contracts (lower confidence, skip if already in AST)
         for ai_contract in ai_contracts {
-            let pair_key = (ai_contract.principal_id.clone(), ai_contract.guarantor_id.clone());
+            let pair_key = (
+                ai_contract.principal_id.clone(),
+                ai_contract.guarantor_id.clone(),
+            );
 
             // Skip if this pair already exists in AST analysis
             if ast_set.contains(&pair_key) {
@@ -82,7 +87,7 @@ impl ContractMerger {
 
             // Lower the confidence for AI contracts
             let mut ai_contract = ai_contract;
-            ai_contract.confidence = (ai_contract.confidence * 0.7).max(0.40).min(0.70);
+            ai_contract.confidence = (ai_contract.confidence * 0.7).clamp(0.40, 0.70);
 
             contracts_by_pair.insert(pair_key, ai_contract);
         }
@@ -111,14 +116,12 @@ mod tests {
 
     #[test]
     fn test_merge_deduplicates_ast_priority() {
-        let ast_deps = vec![
-            Dependency::new(
-                "file://a.rs".to_string(),
-                "file://b.rs".to_string(),
-                "import".to_string(),
-                0.95,
-            ),
-        ];
+        let ast_deps = vec![Dependency::new(
+            "file://a.rs".to_string(),
+            "file://b.rs".to_string(),
+            "import".to_string(),
+            0.95,
+        )];
 
         let ai_contracts = vec![];
 
@@ -141,7 +144,7 @@ mod tests {
             .expect("merge should succeed");
 
         assert_eq!(contracts.len(), 1);
-        
+
         let contract = &contracts[0];
         assert_eq!(contract.discovered_by, ContractSource::Deterministic);
         assert!(contract.confidence >= 0.90);
@@ -150,24 +153,20 @@ mod tests {
 
     #[test]
     fn test_merge_includes_unique_ai_contracts() {
-        let ast_deps = vec![
-            Dependency::new(
-                "file://a.rs".to_string(),
-                "file://b.rs".to_string(),
-                "import".to_string(),
-                0.95,
-            ),
-        ];
+        let ast_deps = vec![Dependency::new(
+            "file://a.rs".to_string(),
+            "file://b.rs".to_string(),
+            "import".to_string(),
+            0.95,
+        )];
 
-        let ai_contracts = vec![
-            Contract::new(
-                "sig_b".to_string(),
-                "sig_c".to_string(),
-                ClauseType::Uses,
-                0.6,
-                ContractSource::AiInferred,
-            ),
-        ];
+        let ai_contracts = vec![Contract::new(
+            "sig_b".to_string(),
+            "sig_c".to_string(),
+            ClauseType::Uses,
+            0.6,
+            ContractSource::AiInferred,
+        )];
 
         let mut signatories = vec![
             Signatory::new(

@@ -4,10 +4,10 @@
 
 use clap::{Parser, Subcommand};
 use idud::{
-    ContractLedger, RepositoryIngestionConfig, RepositoryTraverser, serve, WebServerConfig,
-    discover_training_repos, TrainingOrchestrator, TrainingConfig, TrainingCache,
-    RepositoryIngestionOrchestrator, RepoIngestionConfig,
-    Signatory, Contract, write_synthetic_understanding,
+    discover_training_repos, serve, write_synthetic_understanding, Contract, ContractLedger,
+    RepoIngestionConfig, RepositoryIngestionConfig, RepositoryIngestionOrchestrator,
+    RepositoryTraverser, Signatory, TrainingCache, TrainingConfig, TrainingOrchestrator,
+    WebServerConfig,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -170,7 +170,11 @@ async fn main() -> anyhow::Result<()> {
             let config = RepositoryIngestionConfig {
                 repo_url: url.clone(),
                 branch,
-                work_dir: if local { Some(PathBuf::from(&url)) } else { work_dir },
+                work_dir: if local {
+                    Some(PathBuf::from(&url))
+                } else {
+                    work_dir
+                },
                 skip_clone: local,
             };
 
@@ -217,14 +221,14 @@ async fn main() -> anyhow::Result<()> {
             for contract in result.contracts_discovered.iter().take(10) {
                 println!(
                     "   - {:?}: {} → {} (confidence: {:.2})",
-                    contract.clause_type, contract.principal_id, contract.guarantor_id, contract.confidence
+                    contract.clause_type,
+                    contract.principal_id,
+                    contract.guarantor_id,
+                    contract.confidence
                 );
             }
             if result.contracts_discovered.len() > 10 {
-                println!(
-                    "   ... and {} more",
-                    result.contracts_discovered.len() - 10
-                );
+                println!("   ... and {} more", result.contracts_discovered.len() - 10);
             }
 
             // Save contracts to JSON file for later visualization
@@ -236,7 +240,7 @@ async fn main() -> anyhow::Result<()> {
             for signatory in &result.signatories_registered {
                 let _ = ledger.register_signatory(signatory.clone());
             }
-            
+
             // Draft discovered contracts into the ledger
             for contract in &result.contracts_discovered {
                 let _ = ledger.draft_contract(contract.clone());
@@ -259,7 +263,10 @@ async fn main() -> anyhow::Result<()> {
             if let Ok(json_str) = serde_json::to_string_pretty(&export_data) {
                 if let Ok(_) = std::fs::write(&contracts_file, json_str) {
                     println!("\n💾 Contracts saved to: {}", contracts_file);
-                    println!("   To visualize: cargo run --release -- serve --ledger-file {}", contracts_file);
+                    println!(
+                        "   To visualize: cargo run --release -- serve --ledger-file {}",
+                        contracts_file
+                    );
                 }
             }
         }
@@ -282,20 +289,26 @@ async fn main() -> anyhow::Result<()> {
             println!("💾 Exported to: {}", output.display());
         }
 
-        Commands::Serve { port, host, ledger_file } => {
+        Commands::Serve {
+            port,
+            host,
+            ledger_file,
+        } => {
             let ledger = Arc::new(ContractLedger::new());
-            
+
             let mut sigs_loaded = 0;
             let mut contracts_loaded = 0;
             let mut contract_errors = 0;
-            
+
             // Load contracts from file if provided
             if let Some(file_path) = ledger_file {
                 if let Ok(content) = std::fs::read_to_string(&file_path) {
                     if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
                         if let Some(signatories) = data["signatories"].as_array() {
                             for sig_val in signatories {
-                                if let Ok(sig) = serde_json::from_value::<Signatory>(sig_val.clone()) {
+                                if let Ok(sig) =
+                                    serde_json::from_value::<Signatory>(sig_val.clone())
+                                {
                                     let _ = ledger.register_signatory(sig);
                                     sigs_loaded += 1;
                                 }
@@ -303,7 +316,9 @@ async fn main() -> anyhow::Result<()> {
                         }
                         if let Some(contracts) = data["contracts"].as_array() {
                             for contract_val in contracts {
-                                if let Ok(contract) = serde_json::from_value::<Contract>(contract_val.clone()) {
+                                if let Ok(contract) =
+                                    serde_json::from_value::<Contract>(contract_val.clone())
+                                {
                                     match ledger.draft_contract(contract) {
                                         Ok(_) => contracts_loaded += 1,
                                         Err(e) => {
@@ -318,11 +333,14 @@ async fn main() -> anyhow::Result<()> {
                         }
                         println!("✅ Loaded contracts from: {}", file_path.display());
                         println!("   Signatories: {}", sigs_loaded);
-                        println!("   Contracts: {} (errors: {})", contracts_loaded, contract_errors);
+                        println!(
+                            "   Contracts: {} (errors: {})",
+                            contracts_loaded, contract_errors
+                        );
                     }
                 }
             }
-            
+
             let config = WebServerConfig { port, host };
             serve(ledger, config).await?;
         }
@@ -451,27 +469,34 @@ async fn main() -> anyhow::Result<()> {
             };
 
             match RepositoryIngestionOrchestrator::new(config) {
-                Ok(mut orchestrator) => {
-                    match orchestrator.run().await {
-                        Ok(results) => {
-                            println!("\n✅ Ingestion Results");
-                            println!("   Run ID: {}", results.run_id);
-                            println!("   Repos processed: {}/{}", results.repos_processed, results.total_repos);
-                            println!("   Successful: {}, Failed: {}", results.successful, results.failed);
-                            println!("   Total files: {}", results.total_files);
-                            println!("   Total signatories: {}", results.total_signatories);
-                            println!("   Total contracts: {}", results.total_contracts);
-                            println!("   Duration: {:.1}s ({:.1} min)", 
-                                results.duration_secs, results.duration_secs as f64 / 60.0);
-                            println!("\n💾 Results saved to data/ingestion-log.json");
-                            println!("📊 Progress logged to DATALAKE_LOG.md");
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Ingestion failed: {}", e);
-                            return Err(e.into());
-                        }
+                Ok(mut orchestrator) => match orchestrator.run().await {
+                    Ok(results) => {
+                        println!("\n✅ Ingestion Results");
+                        println!("   Run ID: {}", results.run_id);
+                        println!(
+                            "   Repos processed: {}/{}",
+                            results.repos_processed, results.total_repos
+                        );
+                        println!(
+                            "   Successful: {}, Failed: {}",
+                            results.successful, results.failed
+                        );
+                        println!("   Total files: {}", results.total_files);
+                        println!("   Total signatories: {}", results.total_signatories);
+                        println!("   Total contracts: {}", results.total_contracts);
+                        println!(
+                            "   Duration: {:.1}s ({:.1} min)",
+                            results.duration_secs,
+                            results.duration_secs as f64 / 60.0
+                        );
+                        println!("\n💾 Results saved to data/ingestion-log.json");
+                        println!("📊 Progress logged to DATALAKE_LOG.md");
                     }
-                }
+                    Err(e) => {
+                        eprintln!("❌ Ingestion failed: {}", e);
+                        return Err(e.into());
+                    }
+                },
                 Err(e) => {
                     eprintln!("❌ Failed to initialize orchestrator: {}", e);
                     return Err(e.into());
@@ -480,11 +505,23 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::UnderstandRepo { repo_path, output } => {
-            println!("🧠 Generating synthetic understanding for {}", repo_path.display());
+            println!(
+                "🧠 Generating synthetic understanding for {}",
+                repo_path.display()
+            );
             let json_path = write_synthetic_understanding(&repo_path, &output)?;
-            println!("✅ Wrote synthetic understanding to {}", json_path.display());
-            println!("📝 Markdown summary: {}", output.with_extension("md").display());
-            println!("🌐 HTML report: {}", output.with_extension("html").display());
+            println!(
+                "✅ Wrote synthetic understanding to {}",
+                json_path.display()
+            );
+            println!(
+                "📝 Markdown summary: {}",
+                output.with_extension("md").display()
+            );
+            println!(
+                "🌐 HTML report: {}",
+                output.with_extension("html").display()
+            );
         }
     }
 

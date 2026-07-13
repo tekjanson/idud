@@ -125,7 +125,8 @@ impl Database for SqliteDatabase {
 
     async fn get_topology(&self) -> Result<TopologySnapshot> {
         let conn = self.connection()?;
-        let mut node_stmt = conn.prepare("SELECT hash, source_path, kind, label FROM graph_nodes ORDER BY hash")?;
+        let mut node_stmt =
+            conn.prepare("SELECT hash, source_path, kind, label FROM graph_nodes ORDER BY hash")?;
         let nodes = node_stmt
             .query_map([], |row| {
                 Ok(TopologyNode {
@@ -154,7 +155,9 @@ impl Database for SqliteDatabase {
     async fn get_raw_node(&self, hash: &str) -> Result<Option<String>> {
         let conn = self.connection()?;
         let mut stmt = conn.prepare("SELECT source_fragment FROM graph_nodes WHERE hash = ?1")?;
-        let row = stmt.query_row(params![hash], |row| row.get::<_, Option<String>>(0)).optional()?;
+        let row = stmt
+            .query_row(params![hash], |row| row.get::<_, Option<String>>(0))
+            .optional()?;
         Ok(row.flatten())
     }
 }

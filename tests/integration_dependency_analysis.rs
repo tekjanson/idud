@@ -59,19 +59,22 @@ async fn test_dependency_analysis_pipeline() {
     println!("✓ Registered {} signatories", signatories.len());
 
     // Merge dependencies into contracts
-    let contracts = idud::analysis::ContractMerger::merge_dependencies(
-        all_ast_deps,
-        vec![],
-        &signatories,
-    )
-    .expect("Merge should succeed");
+    let contracts =
+        idud::analysis::ContractMerger::merge_dependencies(all_ast_deps, vec![], &signatories)
+            .expect("Merge should succeed");
 
     println!("✓ Discovered {} contracts", contracts.len());
 
     // Validate contract integrity
     for contract in &contracts {
-        assert!(contract.confidence > 0.0, "Contract confidence should be > 0");
-        assert!(contract.confidence <= 1.0, "Contract confidence should be <= 1");
+        assert!(
+            contract.confidence > 0.0,
+            "Contract confidence should be > 0"
+        );
+        assert!(
+            contract.confidence <= 1.0,
+            "Contract confidence should be <= 1"
+        );
         assert!(
             !contract.principal_id.is_empty(),
             "Principal ID should not be empty"
@@ -93,8 +96,7 @@ async fn test_dependency_analysis_pipeline() {
         .filter(|id| signatory_ids.contains(id))
         .collect();
 
-    let coverage_pct =
-        (dependent_signatories.len() as f32 / signatory_ids.len() as f32) * 100.0;
+    let coverage_pct = (dependent_signatories.len() as f32 / signatory_ids.len() as f32) * 100.0;
     println!(
         "✓ Contract coverage: {:.1}% of signatories have dependencies",
         coverage_pct
@@ -112,17 +114,15 @@ async fn test_dependency_analysis_pipeline() {
 #[test]
 fn test_contract_merger_deduplication() {
     use idud::analysis::ContractMerger;
-    use idud::types::{Signatory, SignatoryType, Contract, ContractSource, ClauseType};
+    use idud::types::{ClauseType, Contract, ContractSource, Signatory, SignatoryType};
 
     // Create test dependencies from AST
-    let ast_deps = vec![
-        idud::analysis::Dependency::new(
-            "file://a.rs".to_string(),
-            "file://b.rs".to_string(),
-            "import".to_string(),
-            0.95,
-        ),
-    ];
+    let ast_deps = vec![idud::analysis::Dependency::new(
+        "file://a.rs".to_string(),
+        "file://b.rs".to_string(),
+        "import".to_string(),
+        0.95,
+    )];
 
     // Create test contracts from AI (duplicate + unique)
     let ai_contracts = vec![
@@ -210,10 +210,7 @@ fn test_ast_analyzer_confidence_scores() {
     assert!(!deps.is_empty());
 
     // Imports should have high confidence
-    let import_deps: Vec<_> = deps
-        .iter()
-        .filter(|d| d.dep_type == "import")
-        .collect();
+    let import_deps: Vec<_> = deps.iter().filter(|d| d.dep_type == "import").collect();
     assert!(!import_deps.is_empty());
 
     for dep in import_deps {
@@ -229,7 +226,7 @@ fn test_ast_analyzer_confidence_scores() {
 
 #[test]
 fn test_graph_has_edges_not_isolated_nodes() {
-    use idud::{ContractLedger, Signatory, SignatoryType, Contract, ClauseType, ContractSource};
+    use idud::{ClauseType, Contract, ContractLedger, ContractSource, Signatory, SignatoryType};
     use std::sync::Arc;
 
     let ledger = Arc::new(ContractLedger::new());
@@ -248,8 +245,12 @@ fn test_graph_has_edges_not_isolated_nodes() {
         "content".to_string(),
     );
 
-    let id1 = ledger.register_signatory(sig1).expect("Should register sig1");
-    let id2 = ledger.register_signatory(sig2).expect("Should register sig2");
+    let id1 = ledger
+        .register_signatory(sig1)
+        .expect("Should register sig1");
+    let id2 = ledger
+        .register_signatory(sig2)
+        .expect("Should register sig2");
 
     // Create contract
     let contract = Contract::new(
@@ -278,8 +279,7 @@ fn test_graph_has_edges_not_isolated_nodes() {
 // Helper: Create a test Rust file with imports
 fn create_test_rust_file(repo_path: &std::path::Path, rel_path: &str) {
     let file_path = repo_path.join(rel_path);
-    std::fs::create_dir_all(file_path.parent().unwrap())
-        .expect("Failed to create directory");
+    std::fs::create_dir_all(file_path.parent().unwrap()).expect("Failed to create directory");
 
     let content = match rel_path {
         "src/main.rs" => {

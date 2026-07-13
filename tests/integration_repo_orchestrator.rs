@@ -9,9 +9,9 @@
 
 #[cfg(test)]
 mod tests {
-    use idud::{RepositoryIngestionOrchestrator, RepoIngestionConfig};
-    use std::path::PathBuf;
+    use idud::{RepoIngestionConfig, RepositoryIngestionOrchestrator};
     use std::fs;
+    use std::path::PathBuf;
 
     #[test]
     fn test_registry_loads_successfully() {
@@ -24,14 +24,19 @@ mod tests {
         };
 
         let result = RepositoryIngestionOrchestrator::new(config);
-        
+
         // Should load successfully if file exists
         if result.is_ok() {
             let orchestrator = result.unwrap();
             let registry = orchestrator.get_registry();
-            println!("✓ Registry loaded with {} repos", registry.repositories.len());
-            assert!(!registry.repositories.is_empty(), 
-                "Registry should have repositories");
+            println!(
+                "✓ Registry loaded with {} repos",
+                registry.repositories.len()
+            );
+            assert!(
+                !registry.repositories.is_empty(),
+                "Registry should have repositories"
+            );
         } else {
             println!("⚠️  Registry file not found (expected in data/repos_to_ingest.json)");
         }
@@ -50,15 +55,20 @@ mod tests {
         if let Ok(orchestrator) = RepositoryIngestionOrchestrator::new(config) {
             let registry = orchestrator.get_registry();
             // Verify registry structure
-            assert!(!registry.metadata.description.is_empty(),
-                "Registry should have description");
-            
+            assert!(
+                !registry.metadata.description.is_empty(),
+                "Registry should have description"
+            );
+
             // Verify repository entries
             for repo in &registry.repositories {
                 assert!(!repo.repo_url.is_empty(), "Repo URL should not be empty");
                 assert!(!repo.repo_name.is_empty(), "Repo name should not be empty");
                 assert!(repo.stars > 0, "Repos should have positive star count");
-                println!("  ✓ {}: {} ⭐ ({})", repo.repo_name, repo.language, repo.stars);
+                println!(
+                    "  ✓ {}: {} ⭐ ({})",
+                    repo.repo_name, repo.language, repo.stars
+                );
             }
         }
     }
@@ -81,9 +91,12 @@ mod tests {
 
         // Verify log entry can be serialized
         let json = serde_json::to_string(&entry).expect("Should serialize");
-        assert!(json.contains("test-repo"), "Log entry should contain repo name");
+        assert!(
+            json.contains("test-repo"),
+            "Log entry should contain repo name"
+        );
         assert!(json.contains("success"), "Log entry should contain status");
-        
+
         println!("✓ Log entry serializes correctly: {}", json);
     }
 
@@ -101,18 +114,24 @@ mod tests {
         assert_eq!(config.max_repos, Some(5), "Max repos should be set");
         assert_eq!(config.timeout_minutes, Some(10), "Timeout should be set");
         assert!(config.skip_already_ingested, "Skip ingested should be true");
-        
+
         println!("✓ Config validation passed");
     }
 
     #[test]
     fn test_default_config() {
         let config = RepoIngestionConfig::default_paths();
-        
-        assert_eq!(config.registry_path, PathBuf::from("data/repos_to_ingest.json"));
+
+        assert_eq!(
+            config.registry_path,
+            PathBuf::from("data/repos_to_ingest.json")
+        );
         assert_eq!(config.output_dir, PathBuf::from("data"));
-        assert!(config.skip_already_ingested, "Should skip ingested repos by default");
-        
+        assert!(
+            config.skip_already_ingested,
+            "Should skip ingested repos by default"
+        );
+
         println!("✓ Default config is correct");
     }
 
@@ -132,8 +151,10 @@ mod tests {
                 Ok(log) => {
                     println!("✓ Loaded existing ingestion log with {} entries", log.len());
                     for (repo_name, entry) in log.iter().take(3) {
-                        println!("  - {}: {} ({} files)", 
-                            repo_name, entry.status, entry.files_processed);
+                        println!(
+                            "  - {}: {} ({} files)",
+                            repo_name, entry.status, entry.files_processed
+                        );
                     }
                 }
                 Err(e) => {
@@ -167,8 +188,10 @@ mod tests {
             }
 
             // Should have at least 3 different languages
-            assert!(lang_count >= 3, 
-                "Registry should have at least 3 languages for diversity");
+            assert!(
+                lang_count >= 3,
+                "Registry should have at least 3 languages for diversity"
+            );
         }
     }
 
@@ -176,7 +199,7 @@ mod tests {
     fn test_markdown_log_creation() {
         use chrono::Utc;
         use idud::training::IngestionMetrics;
-        
+
         let metrics = IngestionMetrics {
             repo_name: "test-repo".to_string(),
             repo_url: "https://github.com/test/repo".to_string(),
@@ -207,7 +230,10 @@ mod tests {
         );
 
         println!("✓ Markdown row: {}", markdown_row);
-        assert!(markdown_row.contains("test-repo"), "Row should contain repo name");
+        assert!(
+            markdown_row.contains("test-repo"),
+            "Row should contain repo name"
+        );
     }
 
     #[test]
@@ -222,16 +248,15 @@ mod tests {
 
         if let Ok(orchestrator) = RepositoryIngestionOrchestrator::new(config) {
             let registry = orchestrator.get_registry();
-            let mut priorities: Vec<u32> = registry.repositories
-                .iter()
-                .map(|r| r.priority)
-                .collect();
+            let mut priorities: Vec<u32> =
+                registry.repositories.iter().map(|r| r.priority).collect();
 
             // Should be ordered by priority
             priorities.sort();
-            
+
             println!("✓ Registry has {} repos", registry.repositories.len());
-            println!("  Priority range: {} - {}", 
+            println!(
+                "  Priority range: {} - {}",
                 priorities.first().unwrap_or(&0),
                 priorities.last().unwrap_or(&0)
             );
@@ -241,11 +266,14 @@ mod tests {
     #[test]
     fn test_output_directory_structure() {
         let output_dir = PathBuf::from("data");
-        
+
         // Create output directory if needed
         fs::create_dir_all(&output_dir).ok();
-        
-        assert!(output_dir.exists(), "Output directory should exist or be creatable");
+
+        assert!(
+            output_dir.exists(),
+            "Output directory should exist or be creatable"
+        );
         println!("✓ Output directory exists: {}", output_dir.display());
 
         // Check for expected files after ingestion
@@ -259,12 +287,12 @@ mod tests {
 
     #[test]
     fn test_metrics_calculation() {
-        use idud::training::IngestionStatus;
         use chrono::Utc;
+        use idud::training::IngestionStatus;
 
         let start = Utc::now();
         let end = start + chrono::Duration::seconds(30);
-        
+
         let metrics = idud::training::IngestionMetrics {
             repo_name: "perf-test".to_string(),
             repo_url: "https://github.com/perf/test".to_string(),
@@ -283,7 +311,9 @@ mod tests {
         println!("✓ Performance metrics:");
         println!("  - Duration: {} seconds", duration.num_seconds());
         println!("  - Files/sec: {:.2}", files_per_sec);
-        println!("  - Signatories/file: {:.2}", 
-            metrics.signatories as f64 / metrics.files_processed as f64);
+        println!(
+            "  - Signatories/file: {:.2}",
+            metrics.signatories as f64 / metrics.files_processed as f64
+        );
     }
 }

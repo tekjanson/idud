@@ -3,7 +3,7 @@
 //! Deterministic Signatory registration from repository files
 //! Clones repo, traverses filesystem, chunks code into Signatories.
 
-use crate::analysis::{AILinker, AILinkerConfig, ASTAnalyzer};
+use crate::analysis::{AILinker, AILinkerConfig};
 use crate::schemas::{ContractValidator, SignatoryFactory};
 use crate::types::*;
 use anyhow::Result;
@@ -45,13 +45,13 @@ impl RepositoryTraverser {
     async fn clone(&self) -> Result<()> {
         std::fs::create_dir_all(&self.work_dir)?;
         let output = tokio::process::Command::new("git")
-            .args(&[
+            .args([
                 "clone",
                 "--branch",
-                &self.config.branch,
+                self.config.branch.as_str(),
                 "--depth",
                 "1",
-                &self.config.repo_url,
+                self.config.repo_url.as_str(),
                 self.work_dir.to_str().unwrap(),
             ])
             .output()
@@ -321,14 +321,18 @@ impl RepositoryTraverser {
             }
         }
 
-        eprintln!("[INGEST] Walk complete, files processed: {}, signatories: {}", files_processed, signatories.len());
+        eprintln!(
+            "[INGEST] Walk complete, files processed: {}, signatories: {}",
+            files_processed,
+            signatories.len()
+        );
 
         // Analyze dependencies using AST (deterministic, fast, free)
         let mut contracts_discovered = Vec::new();
-        
+
         eprintln!("[INGEST] Starting AST-based dependency analysis...");
-        let mut ast_dep_count = 0;
-        
+        let import_regex = Regex::new(r#"(?:import|require|from)\s+['\"]([^'\"]+)['\"]"#).ok();
+
         // Analyze each file in the repo for dependencies
         for entry in WalkDir::new(&self.work_dir)
             .into_iter()
@@ -336,30 +340,30 @@ impl RepositoryTraverser {
             .filter(|e| {
                 let path = e.path();
                 let path_str = path.to_string_lossy();
-                path.is_file() && (
-                    path_str.ends_with(".ts")
-                    || path_str.ends_with(".tsx")
-                    || path_str.ends_with(".js")
-                    || path_str.ends_with(".jsx")
-                    || path_str.ends_with(".rs")
-                    || path_str.ends_with(".py")
-                )
+                path.is_file()
+                    && (path_str.ends_with(".ts")
+                        || path_str.ends_with(".tsx")
+                        || path_str.ends_with(".js")
+                        || path_str.ends_with(".jsx")
+                        || path_str.ends_with(".rs")
+                        || path_str.ends_with(".py"))
             })
         {
             if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                // Extract imports using regex
-                let import_regex = Regex::new(r#"(?:import|require|from)\s+['"]([^'"]+)['"]"#).ok();
-                if let Some(regex) = import_regex {
+                if let Some(regex) = import_regex.as_ref() {
                     for cap in regex.captures_iter(&content) {
                         if let Some(imported_module) = cap.get(1) {
                             let module_name = imported_module.as_str();
-                            
+
                             // Try to find matching signatories
                             if let Ok(rel_path) = entry.path().strip_prefix(&self.work_dir) {
                                 let from_file = rel_path.to_string_lossy();
-                                
+
                                 // Look for signatory that might match this file
-                                if let Some(from_sig) = signatories.iter().find(|s| s.source_uri.contains(&from_file.to_string())) {
+                                if let Some(from_sig) = signatories
+                                    .iter()
+                                    .find(|s| s.source_uri.contains(&from_file.to_string()))
+                                {
                                     // Create a simple contract for this import
                                     let contract = Contract {
                                         id: uuid::Uuid::new_v4().to_string(),
@@ -369,11 +373,13 @@ impl RepositoryTraverser {
                                         confidence: 0.85,
                                         discovered_by: ContractSource::Deterministic,
                                         discovered_at: chrono::Utc::now(),
-                                        clause_reasoning: Some(format!("Import of module: {}", module_name)),
+                                        clause_reasoning: Some(format!(
+                                            "Import of module: {}",
+                                            module_name
+                                        )),
                                         evidential_proofs: vec![],
                                     };
                                     contracts_discovered.push(contract);
-                                    ast_dep_count += 1;
                                 }
                             }
                         }
@@ -381,9 +387,12 @@ impl RepositoryTraverser {
                 }
             }
         }
-        
-        eprintln!("[INGEST] AST analysis created {} contracts", contracts_discovered.len());
-        
+
+        eprintln!(
+            "[INGEST] AST analysis created {} contracts",
+            contracts_discovered.len()
+        );
+
         // Analyze dependencies using AI linking (optional post-processing step)
         // Check if AI linking is enabled
         let enable_ai_linking = std::env::var("ENABLE_AI_LINKING")
@@ -392,9 +401,12 @@ impl RepositoryTraverser {
 
         if enable_ai_linking && !signatories.is_empty() {
             eprintln!("[INGEST] Starting AI linking pass...");
-            tracing::info!("Starting AI linking pass on {} signatories", signatories.len());
+            tracing::info!(
+                "Starting AI linking pass on {} signatories",
+                signatories.len()
+            );
             let mut linker = AILinker::new(AILinkerConfig::default());
-            match linker.link_files(&signatories, &contracts_discovered) {
+            match linker.link_files(&signatories, &contracts_discovered).await {
                 Ok(ai_contracts) => {
                     let metrics = linker.metrics();
                     eprintln!("[INGEST] AI linking found {} contracts", ai_contracts.len());
@@ -458,6 +470,7 @@ struct TestElement {
     snippet: String,
 }
 
+#[allow(dead_code)]
 struct MarkdownSection {
     heading: String,
     start: usize,

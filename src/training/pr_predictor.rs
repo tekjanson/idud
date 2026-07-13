@@ -1,10 +1,10 @@
 //! PR file change predictor using Waymark dependency contracts
 //!
 //! Predicts which files change together based on dependency graph.
-//! Core idea: files that are contractually bound (imports, calls, uses) 
+//! Core idea: files that are contractually bound (imports, calls, uses)
 //! are likely to change together.
 
-use crate::types::{Contract, Signatory, SignatoryType, ClauseType};
+use crate::types::{ClauseType, Contract, Signatory};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -117,7 +117,7 @@ impl PRPredictor {
     }
 
     /// Predict files that change together
-    /// 
+    ///
     /// Strategy:
     /// 1. For each changed file, find all contract obligations
     /// 2. Traverse contracts to connected files
@@ -191,11 +191,7 @@ impl PRPredictor {
         // Convert IDs back to URIs
         let mut predicted_files: Vec<(String, f32)> = predicted_with_scores
             .iter()
-            .filter_map(|(id, score)| {
-                self.graph
-                    .id_to_uri(id)
-                    .map(|uri| (uri, *score))
-            })
+            .filter_map(|(id, score)| self.graph.id_to_uri(id).map(|uri| (uri, *score)))
             .collect();
 
         // Sort by score descending
@@ -226,7 +222,7 @@ impl PRPredictor {
     /// Score a contract based on clause type and confidence
     fn score_contract(&self, contract: &Contract, depth: usize) -> f32 {
         let base_score = contract.confidence;
-        
+
         // Boost score for high-coupling relationships
         let clause_multiplier = match contract.clause_type {
             ClauseType::Requires | ClauseType::RequiredBy => 1.2,
@@ -247,8 +243,8 @@ impl PRPredictor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{ContractSource, SignatoryType};
     use chrono::Utc;
-    use crate::types::ContractSource;
 
     fn create_test_signatory(id: &str, source_uri: &str) -> Signatory {
         Signatory {
@@ -316,9 +312,11 @@ mod tests {
         let predictor = PRPredictor::new(graph);
 
         let prediction = predictor.predict(vec!["src/main.rs".to_string()], 10);
-        
+
         // Should predict src/lib.rs (direct dependency)
-        assert!(prediction.predicted_files.contains(&"src/lib.rs".to_string()));
+        assert!(prediction
+            .predicted_files
+            .contains(&"src/lib.rs".to_string()));
     }
 
     #[test]
@@ -328,9 +326,7 @@ mod tests {
             create_test_signatory("2", "src/lib.rs"),
         ];
 
-        let contracts = vec![
-            create_test_contract("1", "2", ClauseType::Requires, 0.9),
-        ];
+        let contracts = vec![create_test_contract("1", "2", ClauseType::Requires, 0.9)];
 
         let graph = CoDependencyGraph::build(signatories, contracts);
         let predictor = PRPredictor::new(graph);
@@ -358,10 +354,16 @@ mod tests {
         let predictor = PRPredictor::new(graph);
 
         let prediction = predictor.predict(vec!["src/main.rs".to_string()], 10);
-        
+
         // src/lib.rs should have higher score than src/utils.rs
-        let lib_score = prediction.confidence_scores.get("src/lib.rs").unwrap_or(&0.0);
-        let utils_score = prediction.confidence_scores.get("src/utils.rs").unwrap_or(&0.0);
+        let lib_score = prediction
+            .confidence_scores
+            .get("src/lib.rs")
+            .unwrap_or(&0.0);
+        let utils_score = prediction
+            .confidence_scores
+            .get("src/utils.rs")
+            .unwrap_or(&0.0);
         assert!(lib_score > utils_score);
     }
 }

@@ -26,7 +26,7 @@ impl Dependency {
             from_uri,
             to_uri,
             dep_type,
-            confidence: confidence.max(0.0).min(1.0),
+            confidence: confidence.clamp(0.0, 1.0),
         }
     }
 }
@@ -263,7 +263,9 @@ mod tests {
 
         let deps = ASTAnalyzer::analyze_typescript_file("test.ts", code);
         assert!(!deps.is_empty());
-        assert!(deps.iter().any(|d| d.dep_type == "import" && d.to_uri.contains("react")));
+        assert!(deps
+            .iter()
+            .any(|d| d.dep_type == "import" && d.to_uri.contains("react")));
         assert!(deps.iter().any(|d| d.dep_type == "inherit"));
     }
 
@@ -284,7 +286,9 @@ mod tests {
 
         let deps = ASTAnalyzer::analyze_python_file("test.py", code);
         assert!(!deps.is_empty());
-        assert!(deps.iter().any(|d| d.dep_type == "import" && d.to_uri == "os"));
+        assert!(deps
+            .iter()
+            .any(|d| d.dep_type == "import" && d.to_uri == "os"));
         assert!(deps.iter().any(|d| d.dep_type == "inherit"));
     }
 
