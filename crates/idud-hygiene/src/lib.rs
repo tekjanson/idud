@@ -1,6 +1,8 @@
 mod analysis;
 mod dashboard;
+mod embedded_manifests;
 mod manifest;
+mod manifest_schema;
 
 pub use analysis::{
     enforce_golden_manifests, enforce_golden_pattern, report_golden_manifests,

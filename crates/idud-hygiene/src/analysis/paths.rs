@@ -6,9 +6,14 @@ use std::{
 };
 use walkdir::WalkDir;
 
+use crate::manifest::{embedded_manifest_paths_for_loading, load_golden_pattern};
+
 pub fn resolve_manifest_files(repo_root: &Path, manifest_path: &Path) -> Result<Vec<PathBuf>> {
     let resolved = resolve_path(repo_root, manifest_path)?;
-    if resolved.is_dir() {
+    if resolved.is_dir() || is_embedded_manifest_dir(&resolved) {
+        if is_embedded_manifest_dir(&resolved) {
+            return Ok(embedded_manifest_paths_for_loading());
+        }
         let mut files = fs::read_dir(&resolved)?
             .filter_map(Result::ok)
             .map(|entry| entry.path())
@@ -27,7 +32,7 @@ pub fn resolve_manifest_files(repo_root: &Path, manifest_path: &Path) -> Result<
             ));
         }
         Ok(files)
-    } else if resolved.is_file() {
+    } else if resolved.is_file() || load_golden_pattern(&resolved).is_ok() {
         Ok(vec![resolved])
     } else {
         Err(anyhow::anyhow!(
@@ -95,6 +100,12 @@ fn matches_glob(path: &str, pattern: &str) -> bool {
     glob_to_regex(pattern)
         .map(|regex| regex.is_match(path))
         .unwrap_or(false)
+}
+
+fn is_embedded_manifest_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "golden_patterns")
 }
 
 fn glob_to_regex(pattern: &str) -> Result<Regex> {

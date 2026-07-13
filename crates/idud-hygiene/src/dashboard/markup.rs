@@ -56,7 +56,9 @@ pub fn build_rule_details_markup(
     }
     if let Some(explanation) = documentation.explanation.as_deref() {
         if !explanation.trim().is_empty() {
-            markup.bullets.push(format!("<li>{}</li>", escape_html(explanation)));
+            markup
+                .bullets
+                .push(format!("<li>{}</li>", escape_html(explanation)));
         }
     }
     if let Some(visual) = documentation.visual.as_deref() {

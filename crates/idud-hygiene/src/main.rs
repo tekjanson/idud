@@ -102,9 +102,11 @@ fn run() -> Result<()> {
         io::stdin()
             .read_to_string(&mut manifest_content)
             .context("failed to read manifest JSON from stdin")?;
-        let temp_path = env::temp_dir().join(format!("idud-hygiene-manifest-{}.json", process::id()));
-        fs::write(&temp_path, manifest_content)
-            .with_context(|| format!("failed to write stdin manifest to {}", temp_path.display()))?;
+        let temp_path =
+            env::temp_dir().join(format!("idud-hygiene-manifest-{}.json", process::id()));
+        fs::write(&temp_path, manifest_content).with_context(|| {
+            format!("failed to write stdin manifest to {}", temp_path.display())
+        })?;
         temp_path.to_string_lossy().to_string()
     } else {
         manifest_path.unwrap_or_else(|| "crates/idud-hygiene/golden_patterns".to_string())

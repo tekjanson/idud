@@ -1,197 +1,34 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GoldenPattern {
-    pub name: String,
-    pub description: String,
-    pub rules: Vec<Rule>,
-}
+use crate::embedded_manifests::{embedded_manifest_content, embedded_manifest_paths};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum IncludeSpec {
-    Single(String),
-    Multiple(Vec<String>),
-}
-
-impl IncludeSpec {
-    pub fn as_vec(&self) -> Vec<String> {
-        match self {
-            IncludeSpec::Single(pattern) => vec![pattern.clone()],
-            IncludeSpec::Multiple(patterns) => patterns.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum PatternSpec {
-    Single(String),
-    Multiple(Vec<String>),
-}
-
-impl PatternSpec {
-    pub fn as_vec(&self) -> Vec<String> {
-        match self {
-            PatternSpec::Single(pattern) => vec![pattern.clone()],
-            PatternSpec::Multiple(patterns) => patterns.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CallGraphNode {
-    pub id: String,
-    pub pattern: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CallGraphEdge {
-    pub from: String,
-    pub to: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub struct RuleDocumentation {
-    #[serde(default)]
-    pub summary: Option<String>,
-    #[serde(default)]
-    pub explanation: Option<String>,
-    #[serde(default)]
-    pub visual: Option<String>,
-    #[serde(default)]
-    pub example: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "kind")]
-pub enum Rule {
-    #[serde(rename = "forbid-pattern")]
-    ForbidPattern {
-        id: String,
-        pattern: PatternSpec,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "require-pattern")]
-    RequirePattern {
-        id: String,
-        pattern: PatternSpec,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "max-file-lines")]
-    MaxFileLines {
-        id: String,
-        max_lines: usize,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "max-parameters")]
-    MaxParameters {
-        id: String,
-        max_parameters: usize,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "max-nesting-depth")]
-    MaxNestingDepth {
-        id: String,
-        max_depth: usize,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "require-call-graph")]
-    RequireCallGraph {
-        id: String,
-        include: IncludeSpec,
-        nodes: Vec<CallGraphNode>,
-        edges: Vec<CallGraphEdge>,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "require-dependency")]
-    RequireDependency {
-        id: String,
-        pattern: String,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "forbid-dependency")]
-    ForbidDependency {
-        id: String,
-        pattern: String,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-    #[serde(rename = "require-naming")]
-    RequireNaming {
-        id: String,
-        target: String,
-        pattern: String,
-        include: IncludeSpec,
-        #[serde(default)]
-        documentation: Option<RuleDocumentation>,
-    },
-}
-
-impl Rule {
-    pub fn include(&self) -> Vec<String> {
-        match self {
-            Rule::ForbidPattern { include, .. }
-            | Rule::RequirePattern { include, .. }
-            | Rule::MaxFileLines { include, .. }
-            | Rule::MaxParameters { include, .. }
-            | Rule::MaxNestingDepth { include, .. }
-            | Rule::RequireCallGraph { include, .. }
-            | Rule::RequireDependency { include, .. }
-            | Rule::ForbidDependency { include, .. }
-            | Rule::RequireNaming { include, .. } => include.as_vec(),
-        }
-    }
-
-    pub fn id(&self) -> &str {
-        match self {
-            Rule::ForbidPattern { id, .. }
-            | Rule::RequirePattern { id, .. }
-            | Rule::MaxFileLines { id, .. }
-            | Rule::MaxParameters { id, .. }
-            | Rule::MaxNestingDepth { id, .. }
-            | Rule::RequireCallGraph { id, .. }
-            | Rule::RequireDependency { id, .. }
-            | Rule::ForbidDependency { id, .. }
-            | Rule::RequireNaming { id, .. } => id,
-        }
-    }
-
-    pub fn documentation(&self) -> Option<&RuleDocumentation> {
-        match self {
-            Rule::ForbidPattern { documentation, .. }
-            | Rule::RequirePattern { documentation, .. }
-            | Rule::MaxFileLines { documentation, .. }
-            | Rule::MaxParameters { documentation, .. }
-            | Rule::MaxNestingDepth { documentation, .. }
-            | Rule::RequireCallGraph { documentation, .. }
-            | Rule::RequireDependency { documentation, .. }
-            | Rule::ForbidDependency { documentation, .. }
-            | Rule::RequireNaming { documentation, .. } => documentation.as_ref(),
-        }
-    }
-}
+pub use crate::manifest_schema::{
+    CallGraphEdge, CallGraphNode, GoldenPattern, IncludeSpec, PatternSpec, Rule, RuleDocumentation,
+};
 
 pub fn load_golden_pattern(path: impl AsRef<Path>) -> Result<GoldenPattern> {
     let path = path.as_ref();
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read golden pattern {}", path.display()))?;
+    let content = if path.exists() {
+        fs::read_to_string(path)
+            .with_context(|| format!("failed to read golden pattern {}", path.display()))?
+    } else if let Some(embedded) = embedded_manifest_content(path) {
+        embedded.to_string()
+    } else {
+        return Err(anyhow::anyhow!(
+            "failed to resolve golden pattern {}",
+            path.display()
+        ));
+    };
     serde_json::from_str(&content)
         .with_context(|| format!("failed to parse golden pattern {}", path.display()))
+}
+
+pub fn embedded_manifest_paths_for_loading() -> Vec<std::path::PathBuf> {
+    embedded_manifest_paths()
+        .into_iter()
+        .filter(|path| {
+            path.file_name().and_then(|name| name.to_str()) != Some("pattern_registry.json")
+        })
+        .collect()
 }
