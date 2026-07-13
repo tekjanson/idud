@@ -1,0 +1,126 @@
+{
+  "name": "hygiene-pattern-registry",
+  "description": "Machine-readable inventory of enforceable hygiene pattern families.",
+  "patterns": [
+    {
+      "id": "regex-pattern-enforcement",
+      "category": "core-rule-types",
+      "status": "implemented",
+      "manifest": "architecture_hygiene.json"
+    },
+    {
+      "id": "file-size-enforcement",
+      "category": "core-rule-types",
+      "status": "implemented",
+      "manifest": "architecture_hygiene.json"
+    },
+    {
+      "id": "parameter-count-enforcement",
+      "category": "core-rule-types",
+      "status": "implemented",
+      "manifest": "architecture_hygiene.json"
+    },
+    {
+      "id": "call-graph-enforcement",
+      "category": "core-rule-types",
+      "status": "implemented",
+      "manifest": "controller_service_pattern.json"
+    },
+    {
+      "id": "dependency-enforcement",
+      "category": "core-rule-types",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "naming-enforcement",
+      "category": "core-rule-types",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "runtime-safety-blocking-processes",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "production_runtime_hygiene.json"
+    },
+    {
+      "id": "runtime-safety-no-panics",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "production_runtime_hygiene.json"
+    },
+    {
+      "id": "unsafe-code-forbid",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "architecture_hygiene.json"
+    },
+    {
+      "id": "communication-layer-async-runtime",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "layered_architecture_hygiene.json"
+    },
+    {
+      "id": "layer-boundary-sanity",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "layered_architecture_hygiene.json"
+    },
+    {
+      "id": "controller-service-contract",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "controller_service_pattern.json"
+    },
+    {
+      "id": "repository-service-boundary",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "use-case-workflow-contract",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "event-driven-boundary",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "api-service-separation",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "type-naming-convention",
+      "category": "code-quality-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "module-naming-convention",
+      "category": "code-quality-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "side-effect-isolation",
+      "category": "code-quality-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "error-propagation-contract",
+      "category": "code-quality-patterns",
+      "status": "implemented",
+      "manifest": "pattern_catalog_hygiene.json"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "idud-layered-architecture",
+  "description": "Layered architecture contract for business, communication, and scraping concerns.",
+  "rules": [
+    {
+      "id": "business-layer-no-panics",
+      "kind": "forbid-pattern",
+      "pattern": "\\b(unwrap|expect|panic!|todo!|dbg!)\\b",
+      "include": ["src/schemas/**/*.rs", "src/types/**/*.rs", "src/queries/**/*.rs"]
+    },
+    {
+      "id": "business-layer-file-size",
+      "kind": "max-file-lines",
+      "max_lines": 350,
+      "include": ["src/schemas/**/*.rs", "src/types/**/*.rs", "src/queries/**/*.rs"]
+    },
+    {
+      "id": "communication-layer-async-runtime",
+      "kind": "require-pattern",
+      "pattern": "process::Command",
+      "include": ["src/analysis/ai_linker.rs"]
+    },
+    {
+      "id": "communication-layer-no-blocking-processes",
+      "kind": "forbid-pattern",
+      "pattern": "std::process::Command",
+      "include": ["src/analysis/ai_linker.rs", "src/cli/**/*.rs", "src/ui/**/*.rs"]
+    },
+    {
+      "id": "scraping-layer-no-panics",
+      "kind": "forbid-pattern",
+      "pattern": "\\b(unwrap|expect|panic!|todo!|dbg!)\\b",
+      "include": ["src/core/parser/**/*.rs", "src/core/storage/**/*.rs"]
+    },
+    {
+      "id": "scraping-layer-no-blocking-processes",
+      "kind": "forbid-pattern",
+      "pattern": "std::process::Command",
+      "include": ["src/core/parser/**/*.rs", "src/core/storage/**/*.rs"]
+    },
+    {
+      "id": "entrypoints-require-unsafe-forbid",
+      "kind": "require-pattern",
+      "pattern": "#!\\[forbid\\(unsafe_code\\)\\]",
+      "include": ["src/lib.rs", "src/main.rs"]
+    }
+  ]
+}

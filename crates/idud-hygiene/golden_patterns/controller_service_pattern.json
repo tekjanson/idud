@@ -1,0 +1,16 @@
+{
+  "name": "controller-service-call-graph",
+  "description": "Lock in a controller-to-service call pattern for API-style code.",
+  "rules": [
+    {
+      "id": "controller-calls-service",
+      "kind": "require-call-graph",
+      "include": ["src/**/*.rs"],
+      "nodes": [
+        { "id": "controller", "pattern": "(?i)controller|handle_" },
+        { "id": "service", "pattern": "(?i)service|execute_" }
+      ],
+      "edges": [{ "from": "controller", "to": "service" }]
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 // src/lib.rs
+#![forbid(unsafe_code)]
+
 pub mod analysis;
 pub mod cli;
 pub mod contract_ledger;

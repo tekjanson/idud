@@ -10,7 +10,7 @@
 use crate::types::{Contract, Signatory, SignatoryType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::process::Command;
+use tokio::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PredictionRequest {
@@ -42,7 +42,7 @@ pub async fn predict_files_from_issue(
     _api_key: &str,
 ) -> Result<PredictionResponse, Box<dyn std::error::Error>> {
     // Validate that copilot CLI is available
-    let which_result = Command::new("which").arg("copilot").output();
+    let which_result = Command::new("which").arg("copilot").output().await;
     if which_result.is_err() || !which_result?.status.success() {
         return Err(
             "Copilot CLI not found in PATH. Install from: https://github.com/github/gh-copilot"
@@ -63,7 +63,8 @@ pub async fn predict_files_from_issue(
     let output = Command::new("copilot")
         .arg("-p")
         .arg(&user_message)
-        .output()?;
+        .output()
+        .await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -1,4 +1,6 @@
 // src/main.rs
+#![forbid(unsafe_code)]
+
 //! idud: Contract Ledger CLI
 //! Token-efficient concept mapping through durable contract discovery
 

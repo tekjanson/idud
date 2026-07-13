@@ -1,0 +1,51 @@
+{
+  "name": "idud-production-runtime",
+  "description": "Runtime safety contract for the core runtime and training boundary.",
+  "rules": [
+    {
+      "id": "training-predictor-uses-tokio-process",
+      "kind": "require-pattern",
+      "pattern": "tokio::process::Command",
+      "include": ["src/training/predictor.rs"]
+    },
+    {
+      "id": "runtime-no-blocking-process-launch",
+      "kind": "forbid-pattern",
+      "pattern": "std::process::Command",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs",
+        "src/contracts/**/*.rs",
+        "src/core/parser/mod.rs",
+        "src/training/predictor.rs"
+      ]
+    },
+    {
+      "id": "runtime-no-panics",
+      "kind": "forbid-pattern",
+      "pattern": "\\b(unwrap|expect|panic!|todo!|dbg!)\\b",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs",
+        "src/core/parser/mod.rs",
+        "src/contract_ledger.rs",
+        "src/training/predictor.rs"
+      ]
+    },
+    {
+      "id": "runtime-no-unsafe",
+      "kind": "forbid-pattern",
+      "pattern": "\\bunsafe\\b",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs",
+        "src/core/parser/mod.rs",
+        "src/contract_ledger.rs",
+        "src/training/predictor.rs"
+      ]
+    }
+  ]
+}

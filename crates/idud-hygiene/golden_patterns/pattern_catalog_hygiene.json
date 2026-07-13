@@ -1,0 +1,216 @@
+{
+  "name": "idud-pattern-catalog",
+  "description": "Generic pattern contracts for naming, dependency, and boundary discipline across the repository.",
+  "rules": [
+    {
+      "id": "ai-linker-uses-domain-types",
+      "kind": "require-dependency",
+      "pattern": "crate::types",
+      "include": [
+        "src/analysis/ai_linker.rs"
+      ]
+    },
+    {
+      "id": "predictor-uses-async-process-runtime",
+      "kind": "require-dependency",
+      "pattern": "tokio::process::Command",
+      "include": [
+        "src/training/predictor.rs"
+      ]
+    },
+    {
+      "id": "analysis-layer-does-not-import-blocking-runtime",
+      "kind": "forbid-dependency",
+      "pattern": "std::process::Command",
+      "include": [
+        "src/analysis/**/*.rs"
+      ]
+    },
+    {
+      "id": "core-and-analysis-functions-use-snake-case",
+      "kind": "require-naming",
+      "target": "function",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "include": [
+        "src/core/**/*.rs",
+        "src/analysis/**/*.rs"
+      ]
+    },
+    {
+      "id": "types-use-pascal-case",
+      "kind": "require-naming",
+      "target": "type",
+      "pattern": "^[A-Z][A-Za-z0-9]+$",
+      "include": [
+        "src/types.rs",
+        "src/schemas.rs",
+        "src/core/pointers.rs",
+        "src/analysis/**/*.rs"
+      ]
+    },
+    {
+      "id": "modules-use-snake-case",
+      "kind": "require-naming",
+      "target": "module",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "include": [
+        "src/**/*.rs"
+      ]
+    },
+    {
+      "id": "domain-types-avoid-fs",
+      "kind": "forbid-dependency",
+      "pattern": "std::fs",
+      "include": [
+        "src/types.rs",
+        "src/schemas.rs",
+        "src/core/pointers.rs"
+      ]
+    },
+    {
+      "id": "domain-types-avoid-process",
+      "kind": "forbid-dependency",
+      "pattern": "std::process::Command",
+      "include": [
+        "src/types.rs",
+        "src/schemas.rs",
+        "src/core/pointers.rs"
+      ]
+    },
+    {
+      "id": "domain-types-avoid-http",
+      "kind": "forbid-dependency",
+      "pattern": "reqwest::",
+      "include": [
+        "src/types.rs",
+        "src/schemas.rs",
+        "src/core/pointers.rs"
+      ]
+    },
+    {
+      "id": "persistence-layer-uses-result-propagation",
+      "kind": "require-pattern",
+      "pattern": "-> Result<",
+      "include": [
+        "src/core/storage/mod.rs",
+        "src/analysis/ai_linker.rs",
+        "src/training/predictor.rs"
+      ]
+    },
+    {
+      "id": "web-server-routes-are-registered",
+      "kind": "require-pattern",
+      "pattern": "web::scope\\(\"/api\"\\)",
+      "include": [
+        "src/web_server.rs"
+      ]
+    },
+    {
+      "id": "web-server-uses-request-deserialization",
+      "kind": "require-pattern",
+      "pattern": "Deserialize",
+      "include": [
+        "src/web_server.rs"
+      ]
+    },
+    {
+      "id": "web-server-stays-off-persistence",
+      "kind": "forbid-dependency",
+      "pattern": "rusqlite",
+      "include": [
+        "src/web_server.rs"
+      ]
+    },
+    {
+      "id": "persistence-layer-uses-sqlite",
+      "kind": "require-pattern",
+      "pattern": "rusqlite",
+      "include": [
+        "src/core/storage/mod.rs"
+      ]
+    },
+    {
+      "id": "persistence-layer-uses-transactions",
+      "kind": "require-pattern",
+      "pattern": "transaction\\(\\)",
+      "include": [
+        "src/core/storage/mod.rs"
+      ]
+    },
+    {
+      "id": "persistence-layer-commits-writes",
+      "kind": "require-pattern",
+      "pattern": "commit\\(\\)",
+      "include": [
+        "src/core/storage/mod.rs"
+      ]
+    },
+    {
+      "id": "workflow-layer-uses-async-queues",
+      "kind": "require-pattern",
+      "pattern": "tokio::spawn",
+      "include": [
+        "src/pipelines/embedding.rs",
+        "src/pipelines/deep_link.rs",
+        "src/training/orchestrator.rs"
+      ]
+    },
+    {
+      "id": "workflow-layer-uses-result-propagation",
+      "kind": "require-pattern",
+      "pattern": "Result<",
+      "include": [
+        "src/pipelines/embedding.rs",
+        "src/pipelines/deep_link.rs",
+        "src/pipelines/broad_sweep.rs",
+        "src/training/predictor.rs",
+        "src/training/orchestrator.rs",
+        "src/training/repo_ingestion_orchestrator.rs"
+      ]
+    },
+    {
+      "id": "telemetry-layer-uses-tracing",
+      "kind": "require-pattern",
+      "pattern": "tracing::",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/training/predictor.rs",
+        "src/training/orchestrator.rs"
+      ]
+    },
+    {
+      "id": "core-files-stay-shallow",
+      "kind": "max-nesting-depth",
+      "max_depth": 25,
+      "include": [
+        "src/**/*.rs"
+      ]
+    },
+    {
+      "id": "critical-modules-have-tests",
+      "kind": "require-pattern",
+      "pattern": "#\\[cfg\\(test\\)\\]|mod tests",
+      "include": [
+        "src/core/storage/mod.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/training/predictor.rs"
+      ]
+    },
+    {
+      "id": "repo-guards-against-secret-literals",
+      "kind": "forbid-pattern",
+      "pattern": "ghp_[A-Za-z0-9]+|sk-[A-Za-z0-9]+|AIza[0-9A-Za-z-_]{35}",
+      "include": [
+        "src/**/*.rs"
+      ]
+    },
+    {
+      "id": "repo-guards-against-unsafe-code",
+      "kind": "forbid-pattern",
+      "pattern": "\\bunsafe\\b",
+      "include": [
+        "src/**/*.rs"
+      ]
+    }
+  ]
+}

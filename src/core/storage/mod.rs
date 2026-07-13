@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -59,10 +59,13 @@ impl SqliteDatabase {
     }
 
     fn connection(&self) -> Result<Connection> {
-        let guard = self.path.lock().unwrap();
+        let guard = self
+            .path
+            .lock()
+            .map_err(|err| anyhow!("database path mutex poisoned: {err}"))?;
         let path = guard
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("database is not connected"))?;
+            .ok_or_else(|| anyhow!("database is not connected"))?;
         Connection::open(path).context("failed to open sqlite connection")
     }
 }
@@ -95,7 +98,10 @@ impl Database for SqliteDatabase {
         )?;
 
         {
-            let mut path_guard = self.path.lock().unwrap();
+            let mut path_guard = self
+                .path
+                .lock()
+                .map_err(|err| anyhow!("database path mutex poisoned: {err}"))?;
             *path_guard = Some(path.to_path_buf());
         }
         Ok(())

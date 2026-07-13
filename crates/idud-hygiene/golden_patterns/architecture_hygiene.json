@@ -1,0 +1,74 @@
+{
+  "name": "idud-architecture-golden-pattern",
+  "description": "Architectural and system-design invariants that keep the core runtime simple, explicit, and runtime-safe.",
+  "rules": [
+    {
+      "id": "require-async-ai-linker-runtime",
+      "kind": "require-pattern",
+      "pattern": "process::Command",
+      "include": ["src/analysis/ai_linker.rs"]
+    },
+    {
+      "id": "forbid-blocking-process-launch",
+      "kind": "forbid-pattern",
+      "pattern": "std::process::Command",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs",
+        "src/core/parser/mod.rs",
+        "src/contract_ledger.rs",
+        "src/lib.rs",
+        "src/main.rs"
+      ]
+    },
+    {
+      "id": "forbid-panic-style-guards",
+      "kind": "forbid-pattern",
+      "pattern": "\\b(unwrap|expect|panic!|todo!|dbg!)\\b",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs",
+        "src/core/parser/mod.rs",
+        "src/contract_ledger.rs",
+        "src/lib.rs",
+        "src/main.rs"
+      ]
+    },
+    {
+      "id": "require-safe-crate-lints",
+      "kind": "require-pattern",
+      "pattern": "#!\\[forbid\\(unsafe_code\\)\\]",
+      "include": ["src/lib.rs", "src/main.rs"]
+    },
+    {
+      "id": "max-file-lines",
+      "kind": "max-file-lines",
+      "max_lines": 550,
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs",
+        "src/core/parser/mod.rs",
+        "src/contract_ledger.rs",
+        "src/lib.rs",
+        "src/main.rs"
+      ]
+    },
+    {
+      "id": "max-parameters",
+      "kind": "max-parameters",
+      "max_parameters": 7,
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs",
+        "src/core/parser/mod.rs",
+        "src/contract_ledger.rs",
+        "src/lib.rs",
+        "src/main.rs"
+      ]
+    }
+  ]
+}
