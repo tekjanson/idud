@@ -85,7 +85,7 @@ fn confidence_class(confidence: f32) -> &'static str {
 
 /// ContractSentenceView: Renders a single contract sentence with optional confidence badge
 #[component]
-pub fn ContractSentenceView(
+pub fn contract_sentence_view(
     sentence: ContractSentence,
     #[prop(into)] show_confidence: Signal<bool>,
 ) -> impl IntoView {
@@ -108,7 +108,7 @@ pub fn ContractSentenceView(
 
 /// ChainOfObligationView: Renders a chain of obligations as an ordered list
 #[component]
-pub fn ChainOfObligationView(chain: ChainOfObligation) -> impl IntoView {
+pub fn chain_of_obligation_view(chain: ChainOfObligation) -> impl IntoView {
     let root_label = chain.root_signatory.label.clone();
     let total_signatories = chain.total_signatories;
     let max_depth = chain.max_depth;
@@ -153,7 +153,7 @@ pub fn ChainOfObligationView(chain: ChainOfObligation) -> impl IntoView {
 
 /// NetworkOverview: Renders high-level contract network statistics
 #[component]
-pub fn NetworkOverview(
+pub fn network_overview(
     #[prop(into)] signatory_count: Signal<usize>,
     #[prop(into)] contract_count: Signal<usize>,
 ) -> impl IntoView {

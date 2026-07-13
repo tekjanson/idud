@@ -1,0 +1,22 @@
+{
+  "name": "event-driven-boundary",
+  "description": "Lock in asynchronous task fan-out for workflow and pipeline modules.",
+  "rules": [
+    {
+      "id": "workflow-modules-use-async-task-fanout",
+      "kind": "require-pattern",
+      "pattern": "tokio::spawn",
+      "include": [
+        "src/pipelines/embedding.rs",
+        "src/pipelines/deep_link.rs",
+        "src/training/orchestrator.rs"
+      ]
+    },
+    {
+      "id": "training-orchestrator-uses-semaphore-limits",
+      "kind": "require-pattern",
+      "pattern": "Semaphore",
+      "include": ["src/training/orchestrator.rs"]
+    }
+  ]
+}

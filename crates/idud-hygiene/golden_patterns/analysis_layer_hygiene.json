@@ -1,0 +1,34 @@
+{
+  "name": "analysis-layer-hygiene",
+  "description": "Keep analysis modules async-safe, typed, and telemetry-aware.",
+  "rules": [
+    {
+      "id": "analysis-ai-linker-uses-async-runtime",
+      "kind": "require-pattern",
+      "pattern": "process::Command",
+      "include": ["src/analysis/ai_linker.rs"]
+    },
+    {
+      "id": "analysis-ai-linker-uses-tracing",
+      "kind": "require-pattern",
+      "pattern": "tracing::",
+      "include": ["src/analysis/ai_linker.rs"]
+    },
+    {
+      "id": "analysis-modules-propagate-results",
+      "kind": "require-pattern",
+      "pattern": "-> Result<",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/analysis/ast_analyzer.rs",
+        "src/analysis/contract_merger.rs"
+      ]
+    },
+    {
+      "id": "analysis-modules-avoid-blocking-process-api",
+      "kind": "forbid-pattern",
+      "pattern": "std::process::Command",
+      "include": ["src/analysis/**/*.rs"]
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 //! in the root directory so the codebase remains easy to navigate. They also enforce
 //! a configurable golden-pattern contract for the architecture-critical modules.
 
-use idud_hygiene::enforce_golden_pattern;
+use idud_hygiene::{enforce_golden_pattern, render_hygiene_dashboard};
 use std::{collections::BTreeSet, fs, path::Path};
 
 #[test]
@@ -64,13 +64,35 @@ fn repo_root_stays_clean() {
 }
 
 #[test]
+fn renders_html_hygiene_dashboard() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dashboard = render_hygiene_dashboard(
+        manifest_dir,
+        manifest_dir.join("crates/idud-hygiene/golden_patterns"),
+    )
+    .expect("dashboard rendering should succeed");
+
+    assert!(dashboard.contains("<title>idud hygiene dashboard</title>"));
+    assert!(dashboard.contains("Local-first architecture hygiene"));
+    assert!(dashboard.contains("Manifest"));
+}
+
+#[test]
 fn golden_architecture_pattern_is_enforced() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let manifests = [
-        manifest_dir.join("crates/idud-hygiene/golden_patterns/architecture_hygiene.json"),
-        manifest_dir.join("crates/idud-hygiene/golden_patterns/layered_architecture_hygiene.json"),
-        manifest_dir.join("crates/idud-hygiene/golden_patterns/pattern_catalog_hygiene.json"),
-    ];
+    let manifest_root = manifest_dir.join("crates/idud-hygiene/golden_patterns");
+    let mut manifests = fs::read_dir(&manifest_root)
+        .unwrap_or_else(|err| {
+            panic!("failed to read hygiene manifests in {manifest_root:?}: {err}")
+        })
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .filter(|path| {
+            path.file_name().and_then(|name| name.to_str()) != Some("pattern_registry.json")
+        })
+        .collect::<Vec<_>>();
+    manifests.sort();
 
     let mut all_violations = Vec::new();
     for pattern_path in manifests {

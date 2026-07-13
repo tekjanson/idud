@@ -1,0 +1,24 @@
+{
+  "name": "api-service-boundary",
+  "description": "Keep API handlers bound to the service layer and registered under the API scope.",
+  "rules": [
+    {
+      "id": "api-routes-are-registered-under-api-scope",
+      "kind": "require-pattern",
+      "pattern": "web::scope\\(\"/api\"\\)",
+      "include": ["src/web_server.rs"]
+    },
+    {
+      "id": "api-handlers-accept-service-data",
+      "kind": "require-pattern",
+      "pattern": "web::Data<Arc<ContractLedger>>",
+      "include": ["src/web_server.rs"]
+    },
+    {
+      "id": "web-server-uses-contract-ledger-service",
+      "kind": "require-pattern",
+      "pattern": "ContractLedger",
+      "include": ["src/web_server.rs"]
+    }
+  ]
+}

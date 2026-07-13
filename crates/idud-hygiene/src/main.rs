@@ -1,6 +1,10 @@
 use anyhow::{Context, Result};
-use idud_hygiene::{enforce_golden_pattern, report_golden_pattern};
-use std::{env, process};
+use idud_hygiene::{enforce_golden_manifests, render_hygiene_dashboard, report_golden_manifests};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::{self, Command},
+};
 
 fn main() {
     if let Err(err) = run() {
@@ -9,43 +13,126 @@ fn main() {
     }
 }
 
+fn open_in_browser(path: &Path) -> Result<()> {
+    let path_display = path.to_string_lossy().to_string();
+    let mut attempts: Vec<(&str, Vec<&str>)> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        attempts.push(("cmd", vec!["/c", "start", "", path_display.as_str()]));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        attempts.push(("open", vec![path_display.as_str()]));
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        attempts.push(("xdg-open", vec![path_display.as_str()]));
+        attempts.push(("gio", vec!["open", path_display.as_str()]));
+    }
+
+    let mut errors = Vec::new();
+    for (program, args) in attempts {
+        match Command::new(program).args(args).spawn() {
+            Ok(_) => return Ok(()),
+            Err(err) => errors.push(format!("{program}: {err}")),
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "failed to open the report in a browser; tried {}",
+        errors.join(", ")
+    ))
+}
+
 fn run() -> Result<()> {
     let mut args = env::args().skip(1);
     let mut report = false;
+    let mut html = false;
+    let mut should_open_in_browser = false;
+    let mut output_path = None;
     let mut repo_root = None;
     let mut manifest_path = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--report" => report = true,
+            "--report" | "-report" => report = true,
+            "--html" | "-html" => html = true,
+            "--open" | "-open" => should_open_in_browser = true,
+            "--output" | "-output" | "-o" => {
+                let Some(path) = args.next() else {
+                    return Err(anyhow::anyhow!("--output requires a file path"));
+                };
+                output_path = Some(path);
+            }
+            _ if arg.starts_with('-') => {
+                return Err(anyhow::anyhow!(
+                    "unexpected argument {arg}; usage: idud-hygiene [--report|--html] [--open] [--output PATH] <repo-root> [manifest-path]"
+                ))
+            }
             _ if repo_root.is_none() => repo_root = Some(arg),
             _ if manifest_path.is_none() => manifest_path = Some(arg),
             _ => {
                 return Err(anyhow::anyhow!(
-                    "unexpected argument {arg}; usage: idud-hygiene [--report] <repo-root> [manifest-path]"
+                    "unexpected argument {arg}; usage: idud-hygiene [--report|--html] [--open] [--output PATH] <repo-root> [manifest-path]"
                 ))
             }
         }
     }
 
+    if report && html {
+        return Err(anyhow::anyhow!("choose either --report or --html"));
+    }
+
     let repo_root =
-        repo_root.context("usage: idud-hygiene [--report] <repo-root> [manifest-path]")?;
+        repo_root.context("usage: idud-hygiene [--report|--html] [--open] [--output PATH] <repo-root> [manifest-path]")?;
     let manifest_path =
-        manifest_path.unwrap_or_else(|| "golden_patterns/architecture_hygiene.json".to_string());
+        manifest_path.unwrap_or_else(|| "crates/idud-hygiene/golden_patterns".to_string());
+
+    if html {
+        let dashboard = render_hygiene_dashboard(&repo_root, &manifest_path)?;
+        let target_path = if let Some(path) = output_path {
+            PathBuf::from(path)
+        } else {
+            let temp_dir = env::temp_dir();
+            let file_name = format!("idud-hygiene-dashboard-{}.html", process::id());
+            temp_dir.join(file_name)
+        };
+
+        fs::write(&target_path, dashboard)
+            .with_context(|| format!("failed to write HTML report to {}", target_path.display()))?;
+        println!("Wrote HTML hygiene dashboard to {}", target_path.display());
+
+        if should_open_in_browser {
+            open_in_browser(&target_path)?;
+            println!("Opened the report in your default browser.");
+        }
+        return Ok(());
+    }
 
     if report {
-        let reports = report_golden_pattern(&repo_root, &manifest_path)?;
-        for report in reports {
-            let status = if report.passed { "PASS" } else { "FAIL" };
-            println!("[{status}] {}", report.id);
-            for violation in report.violations {
-                println!("  - {violation}");
+        let manifests = report_golden_manifests(&repo_root, &manifest_path)?;
+        for manifest in manifests {
+            println!(
+                "[{}] {} ({})",
+                if manifest.passed { "PASS" } else { "FAIL" },
+                manifest.name,
+                manifest.path
+            );
+            for report in manifest.rules {
+                let status = if report.passed { "PASS" } else { "FAIL" };
+                println!("  [{status}] {}", report.id);
+                for violation in report.violations {
+                    println!("    - {violation}");
+                }
             }
         }
         return Ok(());
     }
 
-    let violations = enforce_golden_pattern(&repo_root, &manifest_path)?;
+    let violations = enforce_golden_manifests(&repo_root, &manifest_path)?;
     if violations.is_empty() {
         println!("No hygiene violations found.");
         Ok(())

@@ -1,0 +1,27 @@
+{
+  "name": "naming-conventions",
+  "description": "Enforce snake_case for functions and modules, PascalCase for types.",
+  "rules": [
+    {
+      "id": "functions-use-snake-case",
+      "kind": "require-naming",
+      "target": "function",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "include": ["src/**/*.rs"]
+    },
+    {
+      "id": "types-use-pascal-case",
+      "kind": "require-naming",
+      "target": "type",
+      "pattern": "^[A-Z][A-Za-z0-9]+$",
+      "include": ["src/**/*.rs"]
+    },
+    {
+      "id": "modules-use-snake-case",
+      "kind": "require-naming",
+      "target": "module",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "include": ["src/**/*.rs"]
+    }
+  ]
+}

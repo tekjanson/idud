@@ -1,0 +1,30 @@
+{
+  "name": "repository-service-boundary",
+  "description": "Keep persistence code transactional and isolated behind repository-style accessors.",
+  "rules": [
+    {
+      "id": "storage-layer-uses-transactions",
+      "kind": "require-pattern",
+      "pattern": "transaction\\(\\)",
+      "include": ["src/core/storage/mod.rs"]
+    },
+    {
+      "id": "storage-layer-commits-writes",
+      "kind": "require-pattern",
+      "pattern": "commit\\(\\)",
+      "include": ["src/core/storage/mod.rs"]
+    },
+    {
+      "id": "storage-layer-uses-sqlite",
+      "kind": "require-dependency",
+      "pattern": "rusqlite",
+      "include": ["src/core/storage/mod.rs"]
+    },
+    {
+      "id": "storage-layer-avoids-http-dependencies",
+      "kind": "forbid-dependency",
+      "pattern": "reqwest::",
+      "include": ["src/core/storage/mod.rs"]
+    }
+  ]
+}

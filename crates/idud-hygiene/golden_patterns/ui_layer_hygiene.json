@@ -1,0 +1,19 @@
+{
+  "name": "ui-layer-hygiene",
+  "description": "Ensure UI modules stay component-oriented and naming-consistent.",
+  "rules": [
+    {
+      "id": "ui-modules-use-component-macro",
+      "kind": "require-pattern",
+      "pattern": "#\\[component\\]",
+      "include": ["src/ui/translator.rs"]
+    },
+    {
+      "id": "ui-functions-use-snake-case",
+      "kind": "require-naming",
+      "target": "function",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "include": ["src/ui/**/*.rs"]
+    }
+  ]
+}

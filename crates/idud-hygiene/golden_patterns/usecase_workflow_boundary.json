@@ -1,0 +1,18 @@
+{
+  "name": "usecase-workflow-boundary",
+  "description": "Ensure workflow-oriented modules delegate to concrete worker functions.",
+  "rules": [
+    {
+      "id": "orchestrator-delegates-to-workers",
+      "kind": "require-pattern",
+      "pattern": "Self::process_repo|process_repo\\(",
+      "include": ["src/training/orchestrator.rs"]
+    },
+    {
+      "id": "training-workflows-use-async-fanout",
+      "kind": "require-pattern",
+      "pattern": "tokio::spawn",
+      "include": ["src/training/orchestrator.rs"]
+    }
+  ]
+}

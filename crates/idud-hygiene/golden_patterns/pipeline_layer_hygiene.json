@@ -1,0 +1,31 @@
+{
+  "name": "pipeline-layer-hygiene",
+  "description": "Keep pipeline modules explicit, result-based, and async-aware.",
+  "rules": [
+    {
+      "id": "pipeline-modules-propagate-results",
+      "kind": "require-pattern",
+      "pattern": "-> Result<",
+      "include": [
+        "src/pipelines/embedding.rs",
+        "src/pipelines/broad_sweep.rs",
+        "src/pipelines/deep_link.rs"
+      ]
+    },
+    {
+      "id": "pipeline-modules-use-async-fanout",
+      "kind": "require-pattern",
+      "pattern": "tokio::spawn",
+      "include": [
+        "src/pipelines/embedding.rs",
+        "src/pipelines/deep_link.rs"
+      ]
+    },
+    {
+      "id": "pipeline-modules-use-tracing",
+      "kind": "require-pattern",
+      "pattern": "tracing::",
+      "include": ["src/pipelines/broad_sweep.rs"]
+    }
+  ]
+}

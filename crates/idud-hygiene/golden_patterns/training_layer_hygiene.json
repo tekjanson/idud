@@ -1,0 +1,40 @@
+{
+  "name": "training-layer-hygiene",
+  "description": "Enforce observability, async fan-out, and Result-based boundaries in training modules.",
+  "rules": [
+    {
+      "id": "training-modules-use-tracing",
+      "kind": "require-pattern",
+      "pattern": "tracing::",
+      "include": [
+        "src/training/orchestrator.rs",
+        "src/training/predictor.rs",
+        "src/training/discovery.rs"
+      ]
+    },
+    {
+      "id": "training-modules-propagate-results",
+      "kind": "require-pattern",
+      "pattern": "-> Result<",
+      "include": [
+        "src/training/cache.rs",
+        "src/training/discovery.rs",
+        "src/training/orchestrator.rs",
+        "src/training/predictor.rs",
+        "src/training/validator.rs"
+      ]
+    },
+    {
+      "id": "training-orchestrator-uses-semaphore",
+      "kind": "require-pattern",
+      "pattern": "Semaphore",
+      "include": ["src/training/orchestrator.rs"]
+    },
+    {
+      "id": "training-orchestrator-uses-async-fanout",
+      "kind": "require-pattern",
+      "pattern": "tokio::spawn",
+      "include": ["src/training/orchestrator.rs"]
+    }
+  ]
+}

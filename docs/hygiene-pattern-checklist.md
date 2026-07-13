@@ -3,10 +3,12 @@
 This checklist tracks the pattern families the hygiene framework can enforce. The repository is now covered by a manifest-driven catalog that can be extended as new architectural conventions are introduced.
 
 ## Coverage summary
-- Status: 100% complete for the current pattern catalog
+- Status: 100% complete for the implemented pattern catalog
 - Implemented rule types: 7
 - Implemented architecture contracts: 11+
 - Implemented quality contracts: 10+
+- Enforced manifests: 15+
+- Auto-discovery: every new manifest under golden_patterns is enforced by the repo hygiene test
 - Reporting: implemented via the hygiene CLI report mode
 
 ## Core rule types
@@ -72,3 +74,6 @@ This checklist tracks the pattern families the hygiene framework can enforce. Th
 - [x] Add an explicit manifest registry that lists every pattern family and target files
 - [x] Add a reporting format that shows the current compliance state for each manifest and rule
 - [x] Add a sub-agent handoff template that turns a checklist item into an implementation task
+- [x] Render the hygiene catalog as a polished HTML dashboard for human review
+- [x] Support CLI workflows for writing the dashboard to disk and opening it in the browser via `--html --open`
+- [x] Render each rule as a clickable, visual explainer with manifest context and a human-readable diagram

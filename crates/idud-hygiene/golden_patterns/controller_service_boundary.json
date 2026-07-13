@@ -1,9 +1,9 @@
 {
-  "name": "controller-service-call-graph",
-  "description": "Lock in a controller-to-service pattern for web handlers.",
+  "name": "controller-service-boundary",
+  "description": "Enforce controller-style handlers delegating to service-level methods.",
   "rules": [
     {
-      "id": "controller-calls-service",
+      "id": "http-controllers-delegate-to-services",
       "kind": "require-pattern",
       "pattern": "ledger\\.(get_all_signatories|get_all_contracts|stats|trace_chain_of_obligation)",
       "include": ["src/web_server.rs"]

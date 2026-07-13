@@ -1,0 +1,17 @@
+{
+  "name": "error-propagation-boundary",
+  "description": "Require explicit Result-based error propagation across critical runtime modules.",
+  "rules": [
+    {
+      "id": "critical-runtime-modules-return-result",
+      "kind": "require-pattern",
+      "pattern": "-> Result<",
+      "include": [
+        "src/analysis/ai_linker.rs",
+        "src/core/storage/mod.rs",
+        "src/training/predictor.rs",
+        "src/training/orchestrator.rs"
+      ]
+    }
+  ]
+}

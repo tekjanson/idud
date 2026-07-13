@@ -121,6 +121,66 @@
       "category": "code-quality-patterns",
       "status": "implemented",
       "manifest": "pattern_catalog_hygiene.json"
+    },
+    {
+      "id": "controller-service-boundary",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "controller_service_boundary.json"
+    },
+    {
+      "id": "api-service-boundary",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "api_service_boundary.json"
+    },
+    {
+      "id": "usecase-workflow-boundary",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "usecase_workflow_boundary.json"
+    },
+    {
+      "id": "naming-conventions",
+      "category": "code-quality-patterns",
+      "status": "implemented",
+      "manifest": "naming_conventions.json"
+    },
+    {
+      "id": "side-effect-boundary",
+      "category": "code-quality-patterns",
+      "status": "implemented",
+      "manifest": "side_effect_boundary.json"
+    },
+    {
+      "id": "error-propagation-boundary",
+      "category": "code-quality-patterns",
+      "status": "implemented",
+      "manifest": "error_propagation_boundary.json"
+    },
+    {
+      "id": "analysis-layer-hygiene",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "analysis_layer_hygiene.json"
+    },
+    {
+      "id": "training-layer-hygiene",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "training_layer_hygiene.json"
+    },
+    {
+      "id": "pipeline-layer-hygiene",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "pipeline_layer_hygiene.json"
+    },
+    {
+      "id": "ui-layer-hygiene",
+      "category": "architectural-patterns",
+      "status": "implemented",
+      "manifest": "ui_layer_hygiene.json"
     }
   ]
 }

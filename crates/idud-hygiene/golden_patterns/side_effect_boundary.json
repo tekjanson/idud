@@ -1,0 +1,24 @@
+{
+  "name": "side-effect-boundary",
+  "description": "Keep domain-style modules free of OS, network, and runtime side effects.",
+  "rules": [
+    {
+      "id": "domain-types-avoid-fs",
+      "kind": "forbid-dependency",
+      "pattern": "std::fs",
+      "include": ["src/schemas.rs", "src/types.rs", "src/core/pointers.rs"]
+    },
+    {
+      "id": "domain-types-avoid-process",
+      "kind": "forbid-dependency",
+      "pattern": "std::process::Command",
+      "include": ["src/schemas.rs", "src/types.rs", "src/core/pointers.rs"]
+    },
+    {
+      "id": "domain-types-avoid-http",
+      "kind": "forbid-dependency",
+      "pattern": "reqwest::",
+      "include": ["src/schemas.rs", "src/types.rs", "src/core/pointers.rs"]
+    }
+  ]
+}
